@@ -31,6 +31,20 @@ export async function getDriverProfile(installationId: string, deviceIdentifier?
   return payload.message;
 }
 
+export async function getAssignedTrips(installationId: string, deviceIdentifier?: string | null) {
+  const session = await getSession();
+  if (!session) throw new Error('Your mobile session has expired. Please sign in again.');
+
+  const response = await fetch(`${session.siteUrl}/api/method/vuna_transport.api.get_mobile_assigned_delivery_trips`, {
+    body: JSON.stringify({ installation_id: installationId, device_identifier: deviceIdentifier }),
+    headers: { 'Content-Type': 'application/json', Cookie: `sid=${session.sid}` },
+    method: 'POST',
+  });
+  const payload = await parseResponse(response, 'Could not load assigned trips.');
+  if (!response.ok || payload.exc) throw new Error(getServerMessage(payload, 'Could not load assigned trips.'));
+  return payload.message;
+}
+
 export async function loginAndRegisterDevice(siteUrl: string, username: string, password: string, device: Record<string, unknown>) {
   const loginResponse = await fetch(`${siteUrl}/api/method/login`, {
     body: JSON.stringify({ usr: username, pwd: password }),
