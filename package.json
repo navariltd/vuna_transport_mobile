@@ -1,0 +1,35 @@
+{
+  "name": "vuna_transport_mobile",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
+    "@expo-google-fonts/inter": "^0.4.2",
+    "expo": "~57.0.26",
+    "expo-camera": "~57.0.6",
+    "expo-crypto": "~57.0.3",
+    "expo-device": "~57.0.2",
+    "expo-application": "~57.0.3",
+    "expo-font": "~57.0.4",
+    "expo-linking": "~57.0.11",
+    "expo-router": "~57.0.24",
+    "expo-secure-store": "~57.0.4",
+    "expo-status-bar": "~57.0.1",
+    "react-native-safe-area-context": "~5.6.2",
+    "react": "19.2.3",
+    "react-native": "0.86.3"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~57.0.2",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "private": true
+}
