@@ -3,7 +3,7 @@ import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, us
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { loginAndRegisterDevice } from '../auth/session';
 import { getOnboardingRecord } from '../storage/onboarding';
 
@@ -49,43 +49,50 @@ export default function LoginScreen() {
   if (!fontsLoaded) return <ActivityIndicator color="#111111" style={styles.screen} />;
 
   return (
-    <View style={styles.screen}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.screen}>
       <StatusBar style="dark" />
-      <Text style={styles.kicker}>VUNA TRANSPORT</Text>
-      <Text style={styles.title}>{blocked ? 'Device access needs attention.' : 'Sign in to continue.'}</Text>
-      <Text style={styles.subtitle}>{blocked ? 'This device is not currently authorized for this user.' : `Connect to ${siteUrl || 'your transport site'}.`}</Text>
-      {!blocked ? <>
-        <TextInput autoCapitalize="none" autoCorrect={false} onChangeText={setUsername} placeholder="Email or username" placeholderTextColor="#999999" style={styles.input} value={username} />
-        <View style={styles.passwordField}>
-          <TextInput
-            autoCapitalize="none"
-            autoCorrect={false}
-            onChangeText={setPassword}
-            placeholder="Password"
-            placeholderTextColor="#999999"
-            secureTextEntry={!showPassword}
-            style={styles.passwordInput}
-            value={password}
-          />
-          <Pressable
-            accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-            accessibilityRole="button"
-            hitSlop={10}
-            onPress={() => setShowPassword((visible) => !visible)}
-            style={styles.passwordToggle}
-          >
-            <Ionicons color="#6B6B6B" name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={21} />
-          </Pressable>
-        </View>
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Pressable disabled={loading} onPress={signIn} style={styles.button}>{loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>Sign in</Text>}</Pressable>
-      </> : <Text style={styles.error}>{error}</Text>}
-    </View>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.kicker}>VUNA TRANSPORT</Text>
+        <Text style={styles.title}>{blocked ? 'Device access needs attention.' : 'Sign in to continue.'}</Text>
+        <Text style={styles.subtitle}>{blocked ? 'This device is not currently authorized for this user.' : `Connect to ${siteUrl || 'your transport site'}.`}</Text>
+        {!blocked ? <>
+          <TextInput autoCapitalize="none" autoCorrect={false} onChangeText={setUsername} placeholder="Email or username" placeholderTextColor="#999999" style={styles.input} value={username} />
+          <View style={styles.passwordField}>
+            <TextInput
+              autoCapitalize="none"
+              autoCorrect={false}
+              onChangeText={setPassword}
+              placeholder="Password"
+              placeholderTextColor="#999999"
+              secureTextEntry={!showPassword}
+              style={styles.passwordInput}
+              value={password}
+            />
+            <Pressable
+              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+              accessibilityRole="button"
+              hitSlop={10}
+              onPress={() => setShowPassword((visible) => !visible)}
+              style={styles.passwordToggle}
+            >
+              <Ionicons color="#6B6B6B" name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={21} />
+            </Pressable>
+          </View>
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <Pressable disabled={loading} onPress={signIn} style={styles.button}>{loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>Sign in</Text>}</Pressable>
+        </> : <Text style={styles.error}>{error}</Text>}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { backgroundColor: '#F7F7F5', flex: 1, justifyContent: 'center', padding: 28 },
+  screen: { backgroundColor: '#F7F7F5', flex: 1 },
+  content: { flexGrow: 1, justifyContent: 'center', padding: 28 },
   kicker: { color: '#6B6B6B', fontFamily: 'Inter_600SemiBold', fontSize: 11, letterSpacing: 1.5 },
   title: { color: '#111111', fontFamily: 'Inter_700Bold', fontSize: 32, lineHeight: 39, marginTop: 14 },
   subtitle: { color: '#6B6B6B', fontFamily: 'Inter_400Regular', fontSize: 16, lineHeight: 24, marginTop: 16 },
