@@ -64,7 +64,7 @@ export default function OnboardingScreen() {
         </View>
         <View style={styles.card}>
           <Text style={styles.label}>VUNA TRANSPORT SITE</Text>
-          <TextInput autoCapitalize="none" autoCorrect={false} keyboardType="url" onChangeText={(value) => { setSiteUrl(value); setError(''); }} placeholder="https://transport.example.com" placeholderTextColor="#A5A5A0" style={styles.input} value={siteUrl} />
+          <TextInput autoCapitalize="none" autoCorrect={false} keyboardType="url" onChangeText={(value: string) => { setSiteUrl(value); setError(''); }} placeholder="https://transport.example.com" placeholderTextColor="#A5A5A0" style={styles.input} value={siteUrl} />
           <Pressable onPress={scan} style={styles.scanButton}><Text style={styles.scanText}>Scan setup QR code</Text><Text style={styles.arrow}>↗</Text></Pressable>
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Pressable disabled={saving} onPress={continueSetup} style={[styles.continueButton, saving && styles.disabled]}>{saving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.continueText}>Continue</Text>}</Pressable>
