@@ -7,6 +7,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ScreenHeader, Section, StateView, StatusBadge, formatAddress, formatDateTime } from '../../../../../features/trips/components';
 import { getDeliveryNoteDetails } from '../../../../../features/trips/api';
+import { TripMap } from '../../../../../features/trips/trip_map';
 import type { DeliveryNoteDetails } from '../../../../../features/trips/types';
 import { colors, radius, spacing } from '../../../../../shared/theme';
 
@@ -52,6 +53,7 @@ export default function DeliveryNoteScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={colors.ink} />}
       >
         <ScreenHeader back title="Delivery Note" />
+        <View style={styles.map}><TripMap activeStop={stop.name} height={240} stops={[stop]} /></View>
         <View style={styles.titleRow}>
           <View style={styles.titleCopy}><Text style={styles.noteName}>{note.name}</Text><Text style={styles.customer}>{note.customer_name || note.customer}</Text></View>
           <StatusBadge status={stop.delivery_status || note.status} />
@@ -91,6 +93,7 @@ export default function DeliveryNoteScreen() {
 const styles = StyleSheet.create({
   screen: { backgroundColor: colors.background, flex: 1 },
   content: { padding: spacing.xl, paddingBottom: 120, paddingTop: 58 },
+  map: { marginHorizontal: -spacing.xl, marginTop: spacing.lg },
   titleRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 12, justifyContent: 'space-between', marginTop: spacing.lg },
   titleCopy: { flex: 1 },
   noteName: { color: colors.ink, fontFamily: 'Inter_700Bold', fontSize: 23 },

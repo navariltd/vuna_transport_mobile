@@ -34,6 +34,7 @@ export type DeliveryStop = {
   estimated_arrival?: string;
   lat?: number;
   lng?: number;
+  coordinate_source?: string;
   details?: string;
   delivery_status?: string;
   address_details?: MobileAddress;

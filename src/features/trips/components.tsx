@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { colors, radius, spacing } from '../../shared/theme';
 import type { DeliveryStop } from './types';
 
@@ -40,6 +41,33 @@ export function TripProgress({ completed, total }: { completed: number; total: n
         <Text style={styles.progressText}>{Math.round(percentage * 100)}%</Text>
       </View>
       <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${percentage * 100}%` }]} /></View>
+    </View>
+  );
+}
+
+export function SemiCircleTripProgress({ completed, total }: { completed: number; total: number }) {
+  const percentage = total ? Math.min(Math.max(completed / total, 0), 1) : 0;
+  const radius = 58;
+  const arcLength = Math.PI * radius;
+
+  return (
+    <View accessibilityLabel={`${completed} of ${total} stops completed`} style={styles.semiCircleProgress}>
+      <Svg height={76} width={132}>
+        <Path d="M 8 66 A 58 58 0 0 1 124 66" fill="none" stroke={colors.divider} strokeLinecap="round" strokeWidth={9} />
+        <Path
+          d="M 8 66 A 58 58 0 0 1 124 66"
+          fill="none"
+          stroke={percentage >= 1 ? colors.success : colors.ink}
+          strokeDasharray={`${arcLength} ${arcLength}`}
+          strokeDashoffset={arcLength * (1 - percentage)}
+          strokeLinecap="round"
+          strokeWidth={9}
+        />
+      </Svg>
+      <View pointerEvents="none" style={styles.semiCircleLabel}>
+        <Text style={styles.semiCircleValue}>{completed}/{total}</Text>
+        <Text style={styles.semiCircleCaption}>STOPS</Text>
+      </View>
     </View>
   );
 }
@@ -127,6 +155,10 @@ const styles = StyleSheet.create({
   progressText: { color: colors.muted, fontFamily: 'Inter_500Medium', fontSize: 12 },
   progressTrack: { backgroundColor: colors.divider, borderRadius: 4, height: 6, overflow: 'hidden' },
   progressFill: { backgroundColor: colors.ink, borderRadius: 4, height: 6 },
+  semiCircleProgress: { height: 76, position: 'relative', width: 132 },
+  semiCircleLabel: { alignItems: 'center', bottom: 2, left: 0, position: 'absolute', right: 0 },
+  semiCircleValue: { color: colors.ink, fontFamily: 'Inter_700Bold', fontSize: 21 },
+  semiCircleCaption: { color: colors.muted, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1, marginTop: 1 },
   stopCard: { alignItems: 'flex-start', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flexDirection: 'row', marginBottom: 12, padding: 16 },
   currentStop: { borderColor: colors.ink, borderWidth: 1.5 },
   stopSequence: { alignItems: 'center', marginRight: 12 },

@@ -11,9 +11,6 @@
       "resizeMode": "contain",
       "backgroundColor": "#F7F7F5"
     },
-    "ios": {
-      "supportsTablet": true
-    },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#061735",
@@ -22,7 +19,9 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ],
       "package": "com.anonymous.vunatransportmobile"
     },
@@ -35,6 +34,7 @@
     },
     "plugins": [
       "expo-router",
+      "@maplibre/maplibre-react-native",
       [
         "expo-image-picker",
         {
@@ -47,6 +47,12 @@
           "cameraPermission": "Allow Vuna Transport to scan setup QR codes."
         }
       ]
-    ]
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Allow Vuna Transport to show your position relative to delivery stops."
+      }
+    }
   }
 }
