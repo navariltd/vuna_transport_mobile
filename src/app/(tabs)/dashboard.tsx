@@ -98,12 +98,19 @@ function tripStatusPriority(status: string) {
 
 function TripCard({ trip }: { trip: DeliveryTrip }) {
   return <Pressable onPress={() => router.push(`/trips/${encodeURIComponent(trip.name)}` as never)} style={styles.tripCard}>
-    <View style={styles.tripHeader}><Text style={styles.tripName}>{trip.name}</Text><StatusBadge status={trip.status} /></View>
-    <Text style={styles.tripMeta}>{trip.vehicle || 'Vehicle not assigned'} · {trip.stop_count} {trip.stop_count === 1 ? 'stop' : 'stops'}</Text>
-    {trip.departure_time ? <Text style={styles.tripTime}>Departure {formatDateTime(trip.departure_time)}</Text> : null}
-    <View style={styles.tripProgress}><TripProgress completed={trip.completed_stop_count || 0} total={trip.stop_count} /></View>
-    {trip.stops?.slice(0, 3).map((stop, index) => <View key={`${trip.name}-${index}`} style={styles.stopRow}><View style={[styles.stopDot, stop.visited ? styles.visited : null]} /><Text style={styles.stopText}>{stop.customer || 'Customer'}{stop.delivery_note ? ` · ${stop.delivery_note}` : ''}</Text></View>)}
-    {trip.stop_count > 3 ? <Text style={styles.moreStops}>+ {trip.stop_count - 3} more stops</Text> : null}
+    <View style={styles.tripBody}>
+      <View style={styles.vehicleRow}>
+        <Text numberOfLines={1} style={styles.vehiclePlate}>{trip.vehicle || 'Vehicle not assigned'}</Text>
+        <Text style={styles.stopCount}>{trip.stop_count} {trip.stop_count === 1 ? 'stop' : 'stops'}</Text>
+      </View>
+      <View style={styles.tripReferenceRow}>
+        <Text numberOfLines={1} style={styles.tripName}>{trip.name}</Text>
+        <StatusBadge status={trip.status} />
+      </View>
+      {trip.departure_time ? <Text style={styles.tripTime}>Departure {formatDateTime(trip.departure_time)}</Text> : null}
+      <View style={styles.tripProgress}><TripProgress completed={trip.completed_stop_count || 0} total={trip.stop_count} /></View>
+    </View>
+    <Ionicons color={colors.faint} name="chevron-forward" size={22} />
   </Pressable>;
 }
 
@@ -126,15 +133,13 @@ const styles = StyleSheet.create({
   emptyCard: { backgroundColor: '#FFFFFF', borderColor: '#D9D9D4', borderRadius: 16, borderWidth: 1, marginTop: 32, padding: 20 },
   emptyTitle: { color: '#111111', fontFamily: 'Inter_600SemiBold', fontSize: 17 },
   emptyText: { color: '#6B6B6B', fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 21, marginTop: 10 },
-  tripCard: { backgroundColor: '#FFFFFF', borderColor: '#D9D9D4', borderRadius: 16, borderWidth: 1, marginTop: 18, padding: 18 },
-  tripHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  tripName: { color: '#111111', fontFamily: 'Inter_600SemiBold', fontSize: 16 },
-  tripMeta: { color: '#6B6B6B', fontFamily: 'Inter_500Medium', fontSize: 13, marginTop: 10 },
+  tripCard: { alignItems: 'center', backgroundColor: '#FFFFFF', borderColor: '#D9D9D4', borderRadius: 16, borderWidth: 1, flexDirection: 'row', gap: 12, marginTop: 18, padding: 18 },
+  tripBody: { flex: 1 },
+  vehicleRow: { alignItems: 'center', flexDirection: 'row', gap: 9 },
+  vehiclePlate: { color: colors.ink, flexShrink: 1, fontFamily: 'Inter_700Bold', fontSize: 20 },
+  stopCount: { backgroundColor: colors.divider, borderRadius: 12, color: colors.muted, fontFamily: 'Inter_600SemiBold', fontSize: 11, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 4 },
+  tripReferenceRow: { alignItems: 'center', flexDirection: 'row', gap: 8, marginTop: 9 },
+  tripName: { color: '#111111', flex: 1, fontFamily: 'Inter_600SemiBold', fontSize: 14 },
   tripTime: { color: '#6B6B6B', fontFamily: 'Inter_400Regular', fontSize: 13, marginTop: 6 },
   tripProgress: { marginTop: 16 },
-  stopRow: { alignItems: 'center', borderTopColor: '#ECECE8', borderTopWidth: 1, flexDirection: 'row', marginTop: 12, paddingTop: 12 },
-  stopDot: { backgroundColor: '#B9B9B2', borderRadius: 5, height: 10, marginRight: 10, width: 10 },
-  visited: { backgroundColor: '#111111' },
-  stopText: { color: '#111111', flex: 1, fontFamily: 'Inter_400Regular', fontSize: 13 },
-  moreStops: { color: '#6B6B6B', fontFamily: 'Inter_500Medium', fontSize: 12, marginTop: 12 },
 });
