@@ -97,6 +97,7 @@ export type PODItem = {
   ordered_qty: number;
   delivered_qty: number;
   rejected_qty: number;
+  uom: string;
   rejection_reason?: string;
   rejection_reason_remarks?: string;
   batch_no?: string;
