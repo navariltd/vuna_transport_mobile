@@ -8,11 +8,11 @@ export function MobileTabBar() {
 
   return (
     <View style={styles.bar}>
-      <Pressable onPress={() => router.replace('/dashboard')} style={styles.tab}>
+      <Pressable accessibilityRole="tab" accessibilityState={{ selected: homeActive }} onPress={() => router.navigate('/dashboard')} style={styles.tab}>
         <Ionicons color={homeActive ? '#111111' : '#8A8A84'} name={homeActive ? 'home' : 'home-outline'} size={21} />
         <Text style={[styles.label, homeActive && styles.active]}>Home</Text>
       </Pressable>
-      <Pressable onPress={() => router.replace('/profile')} style={styles.tab}>
+      <Pressable accessibilityRole="tab" accessibilityState={{ selected: !homeActive }} onPress={() => router.navigate('/profile')} style={styles.tab}>
         <Ionicons color={!homeActive ? '#111111' : '#8A8A84'} name={!homeActive ? 'person' : 'person-outline'} size={21} />
         <Text style={[styles.label, !homeActive && styles.active]}>Profile</Text>
       </Pressable>

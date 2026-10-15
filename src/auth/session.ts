@@ -18,30 +18,34 @@ export async function clearSession() {
 }
 
 export async function getDriverProfile(installationId: string, deviceIdentifier?: string | null) {
-  const session = await getSession();
-  if (!session) throw new Error('Your mobile session has expired. Please sign in again.');
-
-  const response = await fetch(`${session.siteUrl}/api/method/vuna_transport.api.get_mobile_driver_profile`, {
-    body: JSON.stringify({ installation_id: installationId, device_identifier: deviceIdentifier }),
-    headers: { 'Content-Type': 'application/json', Cookie: `sid=${session.sid}` },
-    method: 'POST',
-  });
-  const payload = await parseResponse(response, 'Could not load the driver profile.');
-  if (!response.ok || payload.exc) throw new Error(getServerMessage(payload, 'Could not load the driver profile.'));
-  return payload.message;
+	return callMobileMethod('vuna_transport.api.get_mobile_driver_profile', {
+		installation_id: installationId,
+		device_identifier: deviceIdentifier,
+	}, 'Could not load the driver profile.');
 }
 
 export async function getAssignedTrips(installationId: string, deviceIdentifier?: string | null) {
+	return callMobileMethod('vuna_transport.api.get_mobile_assigned_delivery_trips', {
+		installation_id: installationId,
+		device_identifier: deviceIdentifier,
+	}, 'Could not load assigned trips.');
+}
+
+export async function callMobileMethod(
+	method: string,
+	args: Record<string, unknown>,
+	fallback: string,
+) {
   const session = await getSession();
   if (!session) throw new Error('Your mobile session has expired. Please sign in again.');
 
-  const response = await fetch(`${session.siteUrl}/api/method/vuna_transport.api.get_mobile_assigned_delivery_trips`, {
-    body: JSON.stringify({ installation_id: installationId, device_identifier: deviceIdentifier }),
+	const response = await fetch(`${session.siteUrl}/api/method/${method}`, {
+		body: JSON.stringify(args),
     headers: { 'Content-Type': 'application/json', Cookie: `sid=${session.sid}` },
     method: 'POST',
   });
-  const payload = await parseResponse(response, 'Could not load assigned trips.');
-  if (!response.ok || payload.exc) throw new Error(getServerMessage(payload, 'Could not load assigned trips.'));
+	const payload = await parseResponse(response, fallback);
+	if (!response.ok || payload.exc) throw new Error(getServerMessage(payload, fallback));
   return payload.message;
 }
 
@@ -89,7 +93,7 @@ function getServerMessage(payload: Record<string, unknown>, fallback: string) {
   if (typeof payload.exc_type === 'string' && payload.exc_type) return `${fallback} (${payload.exc_type})`;
   if (typeof payload._server_messages === 'string') {
     try {
-      const messages = JSON.parse(payload._server_messages) as Array<{ message?: string }>;
+      const messages = JSON.parse(payload._server_messages) as { message?: string }[];
       const message = messages.map((item) => item.message).filter(Boolean).join(' ');
       if (message) return message;
     } catch {

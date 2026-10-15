@@ -1,17 +1,21 @@
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, useFonts } from '@expo-google-fonts/inter';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { getAssignedTrips } from '../auth/session';
-import { MobileTabBar } from '../shared/mobile_tab_bar';
-import { getOnboardingRecord } from '../storage/onboarding';
+import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { getAssignedTrips } from '../../auth/session';
+import { StatusBadge, TripProgress, formatDateTime } from '../../features/trips/components';
+import type { DeliveryTrip } from '../../features/trips/types';
+import { colors } from '../../shared/theme';
+import { getOnboardingRecord } from '../../storage/onboarding';
 
 export default function DashboardScreen() {
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
   const [driverName, setDriverName] = useState('Driver');
   const [message, setMessage] = useState('Your assigned trips will appear here.');
-  const [trips, setTrips] = useState<Trip[]>([]);
+  const [trips, setTrips] = useState<DeliveryTrip[]>([]);
+  const [showCompleted, setShowCompleted] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadProfile = useCallback(async () => {
@@ -35,6 +39,13 @@ export default function DashboardScreen() {
 
   useEffect(() => { void loadProfile(); }, [loadProfile]);
 
+  const activeTrips = trips
+    .filter((trip) => !['Completed', 'Cancelled'].includes(trip.status))
+    .sort((left, right) => tripStatusPriority(left.status) - tripStatusPriority(right.status));
+  const completedTrips = trips
+    .filter((trip) => trip.status === 'Completed')
+    .sort((left, right) => (right.departure_time || '').localeCompare(left.departure_time || ''));
+
   if (!fontsLoaded) return <ActivityIndicator color="#111111" style={styles.loading} />;
   return <View style={styles.screen}>
     <StatusBar style="dark" />
@@ -42,35 +53,58 @@ export default function DashboardScreen() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl colors={["#111111"]} onRefresh={() => { setRefreshing(true); void loadProfile(); }} refreshing={refreshing} tintColor="#111111" />}
     >
-      <View style={styles.pageHeader}><Image source={require('../../assets/icon.png')} style={styles.logo} /><Text style={styles.pageTitle}>Home</Text></View>
+      <View style={styles.pageHeader}><Image source={require('../../../assets/icon.png')} style={styles.logo} /><Text style={styles.pageTitle}>Home</Text></View>
       <Text style={styles.greeting}>Good day, {driverName}.</Text>
       <Text style={styles.subtitle}>{message}</Text>
-      {trips.length ? trips.map((trip) => <TripCard key={trip.name} trip={trip} />) : <View style={styles.emptyCard}>
+      {trips.length ? <>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Active deliveries</Text>
+          <Text style={styles.sectionCount}>{activeTrips.length}</Text>
+        </View>
+        {activeTrips.length
+          ? activeTrips.map((trip) => <TripCard key={trip.name} trip={trip} />)
+          : <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>No active deliveries</Text>
+            <Text style={styles.emptyText}>Your scheduled and in-progress trips will appear here.</Text>
+          </View>}
+        {completedTrips.length ? <View style={styles.completedSection}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showCompleted }}
+            onPress={() => setShowCompleted((visible) => !visible)}
+            style={styles.completedHeader}
+          >
+            <View style={styles.completedTitleRow}>
+              <Text style={styles.completedTitle}>Completed deliveries</Text>
+              <Text style={styles.sectionCount}>{completedTrips.length}</Text>
+            </View>
+            <Ionicons color={colors.muted} name={showCompleted ? 'chevron-up' : 'chevron-down'} size={20} />
+          </Pressable>
+          {showCompleted ? completedTrips.map((trip) => <TripCard key={trip.name} trip={trip} />) : null}
+        </View> : null}
+      </> : <View style={styles.emptyCard}>
         <Text style={styles.emptyTitle}>No assigned trips yet</Text>
         <Text style={styles.emptyText}>When a Delivery Trip is assigned to you, its stops and delivery actions will be available here.</Text>
       </View>}
     </ScrollView>
-    <MobileTabBar />
   </View>;
 }
 
-type Trip = {
-  name: string;
-  status: string;
-  vehicle?: string;
-  departure_time?: string;
-  stop_count: number;
-  stops?: Array<{ customer?: string; delivery_note?: string; visited?: number }>;
-};
+function tripStatusPriority(status: string) {
+  if (status === 'In Transit') return 0;
+  if (status === 'Scheduled') return 1;
+  return 2;
+}
 
-function TripCard({ trip }: { trip: Trip }) {
-  return <View style={styles.tripCard}>
-    <View style={styles.tripHeader}><Text style={styles.tripName}>{trip.name}</Text><Text style={styles.tripStatus}>{trip.status}</Text></View>
+function TripCard({ trip }: { trip: DeliveryTrip }) {
+  return <Pressable onPress={() => router.push(`/trips/${encodeURIComponent(trip.name)}` as never)} style={styles.tripCard}>
+    <View style={styles.tripHeader}><Text style={styles.tripName}>{trip.name}</Text><StatusBadge status={trip.status} /></View>
     <Text style={styles.tripMeta}>{trip.vehicle || 'Vehicle not assigned'} · {trip.stop_count} {trip.stop_count === 1 ? 'stop' : 'stops'}</Text>
-    {trip.departure_time ? <Text style={styles.tripTime}>Departure {trip.departure_time}</Text> : null}
+    {trip.departure_time ? <Text style={styles.tripTime}>Departure {formatDateTime(trip.departure_time)}</Text> : null}
+    <View style={styles.tripProgress}><TripProgress completed={trip.completed_stop_count || 0} total={trip.stop_count} /></View>
     {trip.stops?.slice(0, 3).map((stop, index) => <View key={`${trip.name}-${index}`} style={styles.stopRow}><View style={[styles.stopDot, stop.visited ? styles.visited : null]} /><Text style={styles.stopText}>{stop.customer || 'Customer'}{stop.delivery_note ? ` · ${stop.delivery_note}` : ''}</Text></View>)}
     {trip.stop_count > 3 ? <Text style={styles.moreStops}>+ {trip.stop_count - 3} more stops</Text> : null}
-  </View>;
+  </Pressable>;
 }
 
 const styles = StyleSheet.create({
@@ -82,15 +116,22 @@ const styles = StyleSheet.create({
   pageTitle: { color: '#111111', fontFamily: 'Inter_700Bold', fontSize: 20 },
   greeting: { color: '#111111', fontFamily: 'Inter_700Bold', fontSize: 32, lineHeight: 39, marginTop: 28 },
   subtitle: { color: '#6B6B6B', fontFamily: 'Inter_400Regular', fontSize: 16, lineHeight: 24, marginTop: 16 },
+  sectionHeader: { alignItems: 'center', flexDirection: 'row', gap: 8, marginTop: 30 },
+  sectionTitle: { color: colors.ink, fontFamily: 'Inter_700Bold', fontSize: 18 },
+  sectionCount: { backgroundColor: colors.divider, borderRadius: 12, color: colors.muted, fontFamily: 'Inter_600SemiBold', fontSize: 12, minWidth: 24, overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 3, textAlign: 'center' },
+  completedSection: { borderTopColor: colors.border, borderTopWidth: 1, marginTop: 30, paddingTop: 6 },
+  completedHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 50, paddingVertical: 8 },
+  completedTitleRow: { alignItems: 'center', flexDirection: 'row', gap: 8 },
+  completedTitle: { color: colors.ink, fontFamily: 'Inter_600SemiBold', fontSize: 16 },
   emptyCard: { backgroundColor: '#FFFFFF', borderColor: '#D9D9D4', borderRadius: 16, borderWidth: 1, marginTop: 32, padding: 20 },
   emptyTitle: { color: '#111111', fontFamily: 'Inter_600SemiBold', fontSize: 17 },
   emptyText: { color: '#6B6B6B', fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 21, marginTop: 10 },
   tripCard: { backgroundColor: '#FFFFFF', borderColor: '#D9D9D4', borderRadius: 16, borderWidth: 1, marginTop: 18, padding: 18 },
   tripHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   tripName: { color: '#111111', fontFamily: 'Inter_600SemiBold', fontSize: 16 },
-  tripStatus: { color: '#4D6B56', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   tripMeta: { color: '#6B6B6B', fontFamily: 'Inter_500Medium', fontSize: 13, marginTop: 10 },
   tripTime: { color: '#6B6B6B', fontFamily: 'Inter_400Regular', fontSize: 13, marginTop: 6 },
+  tripProgress: { marginTop: 16 },
   stopRow: { alignItems: 'center', borderTopColor: '#ECECE8', borderTopWidth: 1, flexDirection: 'row', marginTop: 12, paddingTop: 12 },
   stopDot: { backgroundColor: '#B9B9B2', borderRadius: 5, height: 10, marginRight: 10, width: 10 },
   visited: { backgroundColor: '#111111' },

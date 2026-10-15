@@ -3,9 +3,8 @@ import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { clearSession, getDriverProfile } from '../auth/session';
-import { MobileTabBar } from '../shared/mobile_tab_bar';
-import { getOnboardingRecord } from '../storage/onboarding';
+import { clearSession, getDriverProfile } from '../../auth/session';
+import { getOnboardingRecord } from '../../storage/onboarding';
 
 type Driver = {
   name: string;
@@ -48,7 +47,7 @@ export default function ProfileScreen() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl colors={["#111111"]} onRefresh={() => { setRefreshing(true); void loadProfile(); }} refreshing={refreshing} tintColor="#111111" />}
     >
-      <View style={styles.pageHeader}><Image source={require('../../assets/icon.png')} style={styles.logo} /><Text style={styles.pageTitle}>Profile</Text></View>
+      <View style={styles.pageHeader}><Image source={require('../../../assets/icon.png')} style={styles.logo} /><Text style={styles.pageTitle}>Profile</Text></View>
       {driver ? <>
         <Text style={styles.title}>{driver.full_name}</Text>
         <Text style={styles.subtitle}>Your ERPNext Driver profile.</Text>
@@ -64,7 +63,6 @@ export default function ProfileScreen() {
       </> : <><Text style={styles.title}>Profile unavailable.</Text><Text style={styles.subtitle}>{message}</Text></>}
       <Pressable onPress={logout} style={styles.logout}><Text style={styles.logoutText}>Log out</Text></Pressable>
     </ScrollView>
-    <MobileTabBar />
   </View>;
 }
 
