@@ -4,8 +4,9 @@ import { useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { getMobileRequestDetails, getMobileRequestHistory } from '../../features/requests/api';
 import type { MobileRequestDetail, MobileRequestHistoryItem } from '../../features/requests/types';
+import { ConnectivityBadge } from '../../offline/components';
+import { loadMobileRequestDetails, loadMobileRequestHistory } from '../../offline/request_repository';
 import { colors, radius, spacing } from '../../shared/theme';
 
 export default function RequestsScreen() {
@@ -22,7 +23,8 @@ export default function RequestsScreen() {
   const load = useCallback(async () => {
     try {
       setError('');
-      setRequests(await getMobileRequestHistory());
+      const loaded = await loadMobileRequestHistory();
+      setRequests(loaded.data);
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : 'Could not load your requests.');
     } finally {
@@ -39,7 +41,8 @@ export default function RequestsScreen() {
     setDetailsError('');
     setDetailsLoading(true);
     try {
-      setRequestDetails(await getMobileRequestDetails(request.doctype, request.name));
+      const loaded = await loadMobileRequestDetails(request.doctype, request.name);
+      setRequestDetails(loaded.data);
     } catch (exception) {
       setDetailsError(exception instanceof Error ? exception.message : 'Could not load the request details.');
     } finally {
@@ -55,7 +58,7 @@ export default function RequestsScreen() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl colors={[colors.ink]} onRefresh={() => { setRefreshing(true); void load(); }} refreshing={refreshing} tintColor={colors.ink} />}
     >
-      <View style={styles.pageHeader}><Image source={require('../../../assets/icon.png')} style={styles.logo} /><Text style={styles.pageTitle}>Requests</Text></View>
+      <View style={styles.pageHeader}><Image source={require('../../../assets/icon.png')} style={styles.logo} /><Text style={styles.pageTitle}>Requests</Text><ConnectivityBadge /></View>
       <Text style={styles.title}>Your requests</Text>
       <Text style={styles.subtitle}>Follow the approval and processing status of requests raised from your trips.</Text>
       {loading ? <RequestListSkeleton /> : error ? <View style={styles.messageCard}>

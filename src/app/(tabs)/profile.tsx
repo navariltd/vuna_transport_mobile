@@ -3,18 +3,13 @@ import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { clearSession, getDriverProfile } from '../../auth/session';
+import { clearSession } from '../../auth/session';
+import { clearCurrentOfflineCache } from '../../offline/cache';
+import { ConnectivityBadge } from '../../offline/components';
+import { loadDriverProfile, type MobileDriverProfile } from '../../offline/profile_repository';
 import { getOnboardingRecord } from '../../storage/onboarding';
 
-type Driver = {
-  name: string;
-  full_name: string;
-  status: string;
-  cell_number?: string;
-  license_number?: string;
-  expiry_date?: string;
-  employee_details?: { company?: string; designation?: string };
-};
+type Driver = NonNullable<MobileDriverProfile['driver']>;
 
 export default function ProfileScreen() {
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
@@ -26,7 +21,8 @@ export default function ProfileScreen() {
     try {
       const record = await getOnboardingRecord();
       if (!record) return router.replace('/');
-      const profile = await getDriverProfile(record.installationId, record.deviceIdentifier);
+      const loaded = await loadDriverProfile(record.installationId, record.deviceIdentifier);
+      const profile = loaded.data;
       if (profile.linked) setDriver(profile.driver);
       else setMessage(profile.message || 'Your driver profile needs attention.');
     } catch (error) {
@@ -38,7 +34,11 @@ export default function ProfileScreen() {
 
   useEffect(() => { void loadProfile(); }, [loadProfile]);
 
-  const logout = async () => { await clearSession(); router.replace('/login'); };
+  const logout = async () => {
+    await clearCurrentOfflineCache();
+    await clearSession();
+    router.replace('/login');
+  };
   if (!fontsLoaded || (!driver && !message)) return <ActivityIndicator color="#111111" style={styles.loading} />;
 
   return <View style={styles.screen}>
@@ -47,7 +47,7 @@ export default function ProfileScreen() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl colors={["#111111"]} onRefresh={() => { setRefreshing(true); void loadProfile(); }} refreshing={refreshing} tintColor="#111111" />}
     >
-      <View style={styles.pageHeader}><Image source={require('../../../assets/icon.png')} style={styles.logo} /><Text style={styles.pageTitle}>Profile</Text></View>
+      <View style={styles.pageHeader}><Image source={require('../../../assets/icon.png')} style={styles.logo} /><Text style={styles.pageTitle}>Profile</Text><ConnectivityBadge /></View>
       {driver ? <>
         <Text style={styles.title}>{driver.full_name}</Text>
         <Text style={styles.subtitle}>Your ERPNext Driver profile.</Text>
