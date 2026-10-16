@@ -4,9 +4,10 @@ import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { getAssignedTrips } from '../../auth/session';
 import { StatusBadge, TripProgress, formatDateTime } from '../../features/trips/components';
 import type { DeliveryTrip } from '../../features/trips/types';
+import { SyncStatusPill } from '../../offline/components';
+import { loadAssignedTrips } from '../../offline/trip_repository';
 import { colors } from '../../shared/theme';
 import { getOnboardingRecord } from '../../storage/onboarding';
 
@@ -23,7 +24,8 @@ export default function DashboardScreen() {
     try {
       const record = await getOnboardingRecord();
       if (!record) return router.replace('/');
-      const result = await getAssignedTrips(record.installationId, record.deviceIdentifier);
+      const loaded = await loadAssignedTrips(record.installationId, record.deviceIdentifier);
+      const result = loaded.data;
       if (result.linked && result.driver) {
         setDriverName(result.driver.full_name);
         setTrips(result.trips || []);
@@ -55,7 +57,7 @@ export default function DashboardScreen() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl colors={["#111111"]} onRefresh={() => { setRefreshing(true); void loadProfile(); }} refreshing={refreshing} tintColor="#111111" />}
     >
-      <View style={styles.pageHeader}><Image source={require('../../../assets/icon.png')} style={styles.logo} /><Text style={styles.pageTitle}>Home</Text></View>
+      <View style={styles.pageHeader}><Image source={require('../../../assets/icon.png')} style={styles.logo} /><Text style={styles.pageTitle}>Home</Text><SyncStatusPill /></View>
       {loading ? <DashboardSkeleton /> : <>
       <Text style={styles.greeting}>{driverName ? `Good day, ${driverName}.` : 'Good day.'}</Text>
       <Text style={styles.subtitle}>{message}</Text>

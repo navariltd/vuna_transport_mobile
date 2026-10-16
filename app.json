@@ -46,7 +46,8 @@
         {
           "cameraPermission": "Allow Vuna Transport to scan setup QR codes."
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "ios": {
       "supportsTablet": true,

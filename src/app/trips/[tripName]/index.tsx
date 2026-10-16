@@ -5,8 +5,9 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
 import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { DeliveryStopCard, ScreenHeader, SemiCircleTripProgress, StateView, StatusBadge, formatDateTime } from '../../../features/trips/components';
-import { getTripDetails, startDeliveryTrip } from '../../../features/trips/api';
+import { startDeliveryTrip } from '../../../features/trips/api';
 import type { DeliveryTrip } from '../../../features/trips/types';
+import { cacheStartedTrip, loadTripDetails } from '../../../offline/trip_repository';
 import { colors, spacing } from '../../../shared/theme';
 
 export default function DeliveryTripScreen() {
@@ -24,8 +25,8 @@ export default function DeliveryTripScreen() {
     if (!tripName) return;
     try {
       setError('');
-      const result = await getTripDetails(tripName);
-      setTrip(result.trip);
+      const result = await loadTripDetails(tripName);
+      setTrip(result.data.trip);
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : 'Could not load the Delivery Trip.');
     } finally {
@@ -43,6 +44,7 @@ export default function DeliveryTripScreen() {
     try {
       const result = await startDeliveryTrip(tripName);
       setTrip((current) => current ? { ...current, ...result.trip } : current);
+      await cacheStartedTrip(result.trip);
       await load();
     } catch (exception) {
       setActionError(exception instanceof Error ? exception.message : 'Could not start the Delivery Trip.');

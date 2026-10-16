@@ -3,10 +3,11 @@ import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { ConnectivityBadge } from '../../offline/components';
 import { colors, radius, spacing } from '../../shared/theme';
 import type { DeliveryStop } from './types';
 
-export function ScreenHeader({ title, back = false }: { title: string; back?: boolean }) {
+export function ScreenHeader({ title, back = false, right }: { title: string; back?: boolean; right?: ReactNode }) {
   return (
     <View style={styles.header}>
       {back ? (
@@ -15,6 +16,8 @@ export function ScreenHeader({ title, back = false }: { title: string; back?: bo
         </Pressable>
       ) : null}
       <Text numberOfLines={1} style={styles.headerTitle}>{title}</Text>
+      {right}
+      <ConnectivityBadge />
     </View>
   );
 }

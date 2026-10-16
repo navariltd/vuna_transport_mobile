@@ -6,9 +6,9 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ScreenHeader, Section, StateView, StatusBadge, formatAddress, formatDateTime } from '../../../../../features/trips/components';
-import { getDeliveryNoteDetails } from '../../../../../features/trips/api';
 import { TripMap } from '../../../../../features/trips/trip_map';
 import type { DeliveryNoteDetails } from '../../../../../features/trips/types';
+import { loadDeliveryNoteDetails } from '../../../../../offline/trip_repository';
 import { colors, radius, spacing } from '../../../../../shared/theme';
 
 export default function DeliveryNoteScreen() {
@@ -23,7 +23,8 @@ export default function DeliveryNoteScreen() {
     if (!tripName || !stopName) return;
     try {
       setError('');
-      setDetails(await getDeliveryNoteDetails(tripName, stopName));
+      const result = await loadDeliveryNoteDetails(tripName, stopName);
+      setDetails(result.data);
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : 'Could not load the Delivery Note.');
     } finally {
@@ -39,7 +40,14 @@ export default function DeliveryNoteScreen() {
   const { stop, delivery_note: note } = details;
   const phone = stop.contact_details?.mobile_no || stop.contact_details?.phone || stop.address_details?.phone;
   const address = formatAddress(stop);
-  const completed = Boolean(stop.visited || stop.proof_of_delivery?.docstatus === 1);
+  const awaitingSync = stop.delivery_status === 'Awaiting Sync'
+    || stop.proof_of_delivery?.status === 'Awaiting Sync';
+  const completed = !awaitingSync && Boolean(stop.visited || stop.proof_of_delivery?.docstatus === 1);
+  const deliveryRecorded = awaitingSync || completed;
+  const canCompleteDelivery = Boolean(
+    stop.can_complete_delivery
+    || (details.trip.actual_start && !details.trip.actual_completion && !deliveryRecorded),
+  );
   const navigate = async () => {
     const query = stop.lat && stop.lng ? `${stop.lat},${stop.lng}` : address;
     if (query) await Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`);
@@ -71,7 +79,7 @@ export default function DeliveryNoteScreen() {
             <Text style={styles.contactName}>{[stop.contact_details?.first_name, stop.contact_details?.last_name].filter(Boolean).join(' ') || stop.customer || 'Not provided'}</Text>
             {phone ? <Text style={styles.phone}>{phone}</Text> : null}
           </View>
-          {phone && !completed ? <Pressable accessibilityLabel="Call customer" onPress={() => Linking.openURL(`tel:${phone}`)} style={styles.outlineButton}><Ionicons color={colors.ink} name="call-outline" size={19} /><Text style={styles.outlineText}>Call</Text></Pressable> : null}
+          {phone && !deliveryRecorded ? <Pressable accessibilityLabel="Call customer" onPress={() => Linking.openURL(`tel:${phone}`)} style={styles.outlineButton}><Ionicons color={colors.ink} name="call-outline" size={19} /><Text style={styles.outlineText}>Call</Text></Pressable> : null}
         </View>
 
         {stop.estimated_arrival ? <View style={styles.timeRow}><Ionicons color={colors.muted} name="time-outline" size={22} /><View><Text style={styles.label}>EXPECTED ARRIVAL</Text><Text style={styles.timeValue}>{formatDateTime(stop.estimated_arrival)}</Text></View></View> : null}
@@ -84,10 +92,11 @@ export default function DeliveryNoteScreen() {
         </Section>
 
         {completed ? <View style={styles.completedCard}><Ionicons color={colors.success} name="checkmark-circle" size={24} /><View style={styles.completedCopy}><Text style={styles.completedTitle}>Delivery recorded</Text><Text style={styles.completedText}>{stop.proof_of_delivery?.name || 'Proof of Delivery submitted'}</Text></View></View> : null}
-        {!completed && stop.requires_trip_start ? <View style={styles.startNotice}><Ionicons color={colors.muted} name="information-circle-outline" size={20} /><Text style={styles.startNoticeText}>Start the Delivery Trip before recording arrival at this stop.</Text></View> : null}
+        {awaitingSync ? <View style={styles.pendingCard}><Ionicons color={colors.warning} name="cloud-upload-outline" size={24} /><View style={styles.completedCopy}><Text style={styles.pendingTitle}>Delivery saved</Text><Text style={styles.pendingText}>Awaiting synchronization</Text></View></View> : null}
+        {!deliveryRecorded && stop.requires_trip_start ? <View style={styles.startNotice}><Ionicons color={colors.muted} name="information-circle-outline" size={20} /><Text style={styles.startNoticeText}>Start the Delivery Trip before recording arrival at this stop.</Text></View> : null}
       </ScrollView>
-      {!completed ? <View style={styles.footer}>
-        {stop.can_complete_delivery ? <Pressable onPress={() => router.push(`/trips/${encodeURIComponent(tripName)}/stops/${encodeURIComponent(stopName)}/pod` as never)} style={styles.primary}><Text style={styles.primaryText}>Complete delivery</Text><Ionicons color={colors.surface} name="arrow-forward" size={20} /></Pressable> : null}
+      {!deliveryRecorded ? <View style={styles.footer}>
+        {canCompleteDelivery ? <Pressable onPress={() => router.push(`/trips/${encodeURIComponent(tripName)}/stops/${encodeURIComponent(stopName)}/pod` as never)} style={styles.primary}><Text style={styles.primaryText}>Complete delivery</Text><Ionicons color={colors.surface} name="arrow-forward" size={20} /></Pressable> : null}
       </View> : null}
     </View>
   );
@@ -125,6 +134,9 @@ const styles = StyleSheet.create({
   completedCopy: { marginLeft: 12 },
   completedTitle: { color: colors.success, fontFamily: 'Inter_600SemiBold', fontSize: 14 },
   completedText: { color: colors.success, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 4 },
+  pendingCard: { alignItems: 'center', backgroundColor: colors.warningSoft, borderRadius: radius.md, flexDirection: 'row', marginTop: spacing.xl, padding: spacing.lg },
+  pendingTitle: { color: colors.warning, fontFamily: 'Inter_600SemiBold', fontSize: 14 },
+  pendingText: { color: colors.warning, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 4 },
   startNotice: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, flexDirection: 'row', gap: 9, marginTop: spacing.xl, padding: 14 },
   startNoticeText: { color: colors.muted, flex: 1, fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 18 },
   footer: { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1, bottom: 0, left: 0, padding: 16, paddingBottom: 28, position: 'absolute', right: 0 },

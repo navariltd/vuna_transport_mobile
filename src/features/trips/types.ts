@@ -134,6 +134,7 @@ export type DeliveryNoteDetails = {
 
 export type PODItem = {
   name: string;
+  delivery_note_item?: string;
   item_code: string;
   item_name?: string;
   ordered_qty: number;
@@ -147,6 +148,7 @@ export type PODItem = {
 
 export type ProofOfDeliveryDraft = {
   name: string;
+  request_id?: string;
   docstatus: number;
   status: string;
   delivery_trip: string;

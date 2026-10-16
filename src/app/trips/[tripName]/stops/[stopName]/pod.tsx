@@ -6,10 +6,14 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { isConnectivityFailure } from '../../../../../auth/session';
 import { ScreenHeader, Section, StateView } from '../../../../../features/trips/components';
-import { prepareProofOfDelivery, submitProofOfDelivery, uploadPODAttachment } from '../../../../../features/trips/api';
 import type { PODItem, ProofOfDeliveryDraft } from '../../../../../features/trips/types';
 import { SignaturePad } from '../../../../../features/proof-of-delivery/signature_pad';
+import { persistPODPhoto, removePODPhoto } from '../../../../../offline/files';
+import { enqueueOfflineOperation, getActiveOfflineOperation, getOfflineOperation, type OfflineOperationStatus, updateOfflineOperation } from '../../../../../offline/outbox';
+import { type OfflinePODPayload, requestOfflineSync, synchronizeOfflineOperation } from '../../../../../offline/sync';
+import { cachePendingProofOfDelivery, loadProofOfDeliveryDraft } from '../../../../../offline/trip_repository';
 import { colors, radius, spacing } from '../../../../../shared/theme';
 
 export default function ProofOfDeliveryScreen() {
@@ -22,13 +26,28 @@ export default function ProofOfDeliveryScreen() {
   const [submissionMessage, setSubmissionMessage] = useState('Uploading delivery proof…');
   const submissionLock = useRef(false);
   const [signatureSvg, setSignatureSvg] = useState<string | null>(null);
-  const [photo, setPhoto] = useState<{ uri: string; base64: string; filename: string } | null>(null);
+  const [photo, setPhoto] = useState<{ uri: string; filename: string } | null>(null);
+  const [queuedOperationId, setQueuedOperationId] = useState<string | null>(null);
+  const [queuedStatus, setQueuedStatus] = useState<OfflineOperationStatus | null>(null);
 
   const load = useCallback(async () => {
     if (!tripName || !stopName) return;
     try {
       setError('');
-      setPod(await prepareProofOfDelivery(tripName, stopName));
+      const queued = await getActiveOfflineOperation('submit_pod', `${tripName}:${stopName}`);
+      if (queued) {
+        const payload = queued.payload as OfflinePODPayload;
+        setQueuedOperationId(queued.operationId);
+        setQueuedStatus(queued.status);
+        setPod(payload.pod);
+        setSignatureSvg(payload.signatureSvg || null);
+        setPhoto(payload.photoUri && payload.photoFilename
+          ? { uri: payload.photoUri, filename: payload.photoFilename }
+          : null);
+        return;
+      }
+      const result = await loadProofOfDeliveryDraft(tripName, stopName);
+      setPod(result.data);
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : 'Could not prepare Proof of Delivery.');
     } finally {
@@ -68,15 +87,15 @@ export default function ProofOfDeliveryScreen() {
       }
       const rendered = await image.renderAsync();
       const prepared = await rendered.saveAsync({
-        base64: true,
         compress: 0.55,
         format: SaveFormat.JPEG,
       });
-      if (!prepared.base64) throw new Error('The prepared image has no data.');
+      const filename = `delivery-${Date.now()}.jpg`;
+      const persistentUri = await persistPODPhoto(prepared.uri, filename);
+      removePODPhoto(photo?.uri);
       setPhoto({
-        uri: prepared.uri,
-        base64: prepared.base64,
-        filename: `delivery-${Date.now()}.jpg`,
+        uri: persistentUri,
+        filename,
       });
     } catch {
       Alert.alert('Photo processing failed', 'Please take the delivery photo again.');
@@ -95,24 +114,44 @@ export default function ProofOfDeliveryScreen() {
     setSubmissionMessage('Uploading delivery proof…');
     setError('');
     try {
-      let nextPod = { ...pod };
-      const [signatureUpload, photoUpload] = await Promise.all([
-        signatureSvg
-          ? uploadPODAttachment(tripName, stopName, pod.name, 'signature', signatureSvg, `signature-${pod.name}.svg`, 'text')
-          : Promise.resolve(null),
-        photo
-          ? uploadPODAttachment(tripName, stopName, pod.name, 'delivery_photo', photo.base64, photo.filename)
-          : Promise.resolve(null),
-      ]);
-      if (signatureUpload) nextPod.signature = signatureUpload.file_url;
-      if (photoUpload) nextPod.delivery_photo = photoUpload.file_url;
+      const nextPod = { ...pod };
       nextPod.items = nextPod.items.map((item) => ({ ...item, rejected_qty: Math.max(item.ordered_qty - item.delivered_qty, 0) }));
+      const offlinePayload: OfflinePODPayload = {
+        tripName,
+        stopName,
+        pod: nextPod,
+        signatureSvg,
+        photoUri: photo?.uri,
+        photoFilename: photo?.filename,
+      };
+      let operationId = queuedOperationId;
+      if (operationId) {
+        const existing = await getOfflineOperation(operationId);
+        await updateOfflineOperation(operationId, {
+          payload: { ...offlinePayload, serverPodName: (existing?.payload as OfflinePODPayload | undefined)?.serverPodName },
+          status: 'Pending',
+          lastError: null,
+        });
+      } else {
+        operationId = await enqueueOfflineOperation('submit_pod', `${tripName}:${stopName}`, offlinePayload);
+        setQueuedOperationId(operationId);
+      }
+      await cachePendingProofOfDelivery(tripName, stopName, operationId);
       setSubmissionMessage('Finalising delivery…');
-      const result = await submitProofOfDelivery(tripName, stopName, nextPod);
+      const result = await synchronizeOfflineOperation(operationId);
       const focus = result.trip.next_stop ? `?focusStop=${encodeURIComponent(result.trip.next_stop)}` : '';
       router.replace(`/trips/${encodeURIComponent(tripName)}${focus}` as never);
     } catch (exception) {
-      setError(exception instanceof Error ? exception.message : 'Could not submit Proof of Delivery.');
+      if (isConnectivityFailure(exception)) {
+        requestOfflineSync();
+        Alert.alert(
+          'Saved for synchronization',
+          'This delivery is safely stored on the device and will synchronize when the connection returns.',
+          [{ text: 'Continue', onPress: () => router.replace(`/trips/${encodeURIComponent(tripName)}` as never) }],
+        );
+      } else {
+        setError(exception instanceof Error ? exception.message : 'Could not submit Proof of Delivery.');
+      }
     } finally {
       submissionLock.current = false;
       setSubmitting(false);
@@ -137,6 +176,7 @@ export default function ProofOfDeliveryScreen() {
       </Modal>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <ScreenHeader back title="Proof of Delivery" />
+        {queuedStatus ? <View style={styles.queuedNotice}><Ionicons color={colors.warning} name="save-outline" size={18} /><View style={styles.queuedNoticeCopy}><Text style={styles.queuedNoticeTitle}>Saved on this device</Text><Text style={styles.queuedNoticeMessage}>Status: {queuedStatus}. Review the details and submit again when ready.</Text></View></View> : null}
         <Text style={styles.customer}>{pod.customer}</Text>
         <Text style={styles.reference}>{pod.delivery_note}</Text>
 
@@ -219,4 +259,8 @@ const styles = StyleSheet.create({
   submissionCard: { alignItems: 'center', backgroundColor: colors.surface, borderRadius: radius.md, maxWidth: 320, paddingHorizontal: 34, paddingVertical: 30, width: '100%' },
   submissionTitle: { color: colors.ink, fontFamily: 'Inter_600SemiBold', fontSize: 16, marginTop: 18, textAlign: 'center' },
   submissionHint: { color: colors.muted, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 7, textAlign: 'center' },
+  queuedNotice: { alignItems: 'center', backgroundColor: colors.warningSoft, borderRadius: radius.sm, flexDirection: 'row', gap: 10, marginTop: spacing.lg, padding: 12 },
+  queuedNoticeCopy: { flex: 1 },
+  queuedNoticeTitle: { color: colors.warning, fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  queuedNoticeMessage: { color: colors.warning, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 2 },
 });
