@@ -1,6 +1,6 @@
 import { callMobileMethod } from '../../auth/session';
 import { getOnboardingRecord } from '../../storage/onboarding';
-import type { DeliveryNoteDetails, DeliveryTrip, ProofOfDeliveryDraft } from './types';
+import type { DeliveryNoteDetails, DeliveryTrip, MobileTripIncidents, ProofOfDeliveryDraft } from './types';
 
 async function deviceArgs() {
   const record = await getOnboardingRecord();
@@ -16,6 +16,50 @@ export async function getTripDetails(tripName: string): Promise<{ trip: Delivery
     'vuna_transport.api.get_mobile_delivery_trip_details',
     { ...(await deviceArgs()), trip_name: tripName },
     'Could not load the Delivery Trip.',
+  );
+}
+
+export async function startDeliveryTrip(tripName: string): Promise<{ trip: DeliveryTrip }> {
+  return callMobileMethod(
+    'vuna_transport.api.start_mobile_trip',
+    { ...(await deviceArgs()), trip_name: tripName },
+    'Could not start the Delivery Trip.',
+  );
+}
+
+export async function getTripIncidents(tripName: string): Promise<MobileTripIncidents> {
+  return callMobileMethod(
+    'vuna_transport.api.get_mobile_incidents',
+    { ...(await deviceArgs()), trip_name: tripName },
+    'Could not load Vehicle Incidents.',
+  );
+}
+
+export async function reportTripIncident(
+  tripName: string,
+  payload: Record<string, unknown>,
+): Promise<{ incident: string; created: boolean }> {
+  return callMobileMethod(
+    'vuna_transport.api.report_mobile_incident',
+    { ...(await deviceArgs()), trip_name: tripName, payload },
+    'Could not report the Vehicle Incident.',
+  );
+}
+
+export async function resolveTripIncident(
+  tripName: string,
+  incidentName: string,
+  resolution: string,
+): Promise<{ incident: string; status: string; submitted: boolean }> {
+  return callMobileMethod(
+    'vuna_transport.api.resolve_mobile_incident',
+    {
+      ...(await deviceArgs()),
+      trip_name: tripName,
+      incident_name: incidentName,
+      resolution,
+    },
+    'Could not resolve the Vehicle Incident.',
   );
 }
 
@@ -80,5 +124,6 @@ export async function uploadPODAttachment(
       content_encoding: contentEncoding,
     },
     'Could not upload the Proof of Delivery attachment.',
+    120000,
   );
 }

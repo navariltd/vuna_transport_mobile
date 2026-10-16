@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { getSession } from '../auth/session';
 import { getOnboardingRecord, saveOnboardingRecord } from '../storage/onboarding';
 
 const ink = '#111111';
@@ -16,10 +17,29 @@ export default function OnboardingScreen() {
   const [error, setError] = useState('');
   const [scannerVisible, setScannerVisible] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [checkingSetup, setCheckingSetup] = useState(true);
   const [permission, requestPermission] = useCameraPermissions();
 
-  useEffect(() => { getOnboardingRecord().then((record) => record && setSiteUrl(record.siteUrl)); }, []);
-  if (!fontsLoaded) return <ActivityIndicator color={ink} style={styles.loader} />;
+  useEffect(() => {
+    let active = true;
+    const restoreSetup = async () => {
+      try {
+        const [record, session] = await Promise.all([getOnboardingRecord(), getSession()]);
+        if (!active) return;
+        if (record) {
+          if (session?.siteUrl === record.siteUrl) router.replace('/dashboard');
+          else router.replace('/login');
+          return;
+        }
+        setCheckingSetup(false);
+      } catch {
+        if (active) setCheckingSetup(false);
+      }
+    };
+    void restoreSetup();
+    return () => { active = false; };
+  }, []);
+  if (!fontsLoaded || checkingSetup) return <ActivityIndicator color={ink} style={styles.loader} />;
 
   const validHttpsUrl = (value: string) => {
     try {

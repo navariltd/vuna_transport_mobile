@@ -9,6 +9,7 @@ export default function MobileTabsLayout() {
       tabBar={() => <MobileTabBar />}
     >
       <Tabs.Screen name="dashboard" options={{ title: 'Home' }} />
+      <Tabs.Screen name="requests" options={{ title: 'Requests' }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
     </Tabs>
   );

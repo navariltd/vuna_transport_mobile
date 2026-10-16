@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, useFonts } from '@expo-google-fonts/inter';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenHeader, Section, StateView } from '../../../../../features/trips/components';
 import { prepareProofOfDelivery, submitProofOfDelivery, uploadPODAttachment } from '../../../../../features/trips/api';
 import type { PODItem, ProofOfDeliveryDraft } from '../../../../../features/trips/types';
@@ -18,6 +19,8 @@ export default function ProofOfDeliveryScreen() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [submissionMessage, setSubmissionMessage] = useState('Uploading delivery proof…');
+  const submissionLock = useRef(false);
   const [signatureSvg, setSignatureSvg] = useState<string | null>(null);
   const [photo, setPhoto] = useState<{ uri: string; base64: string; filename: string } | null>(null);
 
@@ -54,38 +57,64 @@ export default function ProofOfDeliveryScreen() {
   const takePhoto = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) return Alert.alert('Camera permission needed', 'Allow camera access to capture delivery evidence.');
-    const result = await ImagePicker.launchCameraAsync({ base64: true, mediaTypes: ['images'], quality: 0.7 });
-    if (result.canceled || !result.assets[0]?.base64) return;
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
+    if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
-    setPhoto({ uri: asset.uri, base64: asset.base64 as string, filename: asset.fileName || `delivery-${Date.now()}.jpg` });
+    const longestEdge = Math.max(asset.width || 0, asset.height || 0);
+    try {
+      const image = ImageManipulator.manipulate(asset.uri);
+      if (longestEdge > 1600) {
+        image.resize(asset.width >= asset.height ? { width: 1600 } : { height: 1600 });
+      }
+      const rendered = await image.renderAsync();
+      const prepared = await rendered.saveAsync({
+        base64: true,
+        compress: 0.55,
+        format: SaveFormat.JPEG,
+      });
+      if (!prepared.base64) throw new Error('The prepared image has no data.');
+      setPhoto({
+        uri: prepared.uri,
+        base64: prepared.base64,
+        filename: `delivery-${Date.now()}.jpg`,
+      });
+    } catch {
+      Alert.alert('Photo processing failed', 'Please take the delivery photo again.');
+    }
   };
 
   const submit = async () => {
-    if (!pod || !tripName || !stopName) return;
+    if (submissionLock.current || !pod || !tripName || !stopName) return;
     if (!pod.received_by?.trim()) return setError('Enter the receiver name before submitting.');
     if (rejectedTotal > 0 && !pod.exception_reason) return setError('Select an exception reason for the rejected quantity.');
     const missingReason = pod.items.find((item) => item.ordered_qty - item.delivered_qty > 0 && !item.rejection_reason && !item.rejection_reason_remarks);
     if (missingReason) return setError(`Select a rejection reason for ${missingReason.item_name || missingReason.item_code}.`);
 
+    submissionLock.current = true;
     setSubmitting(true);
+    setSubmissionMessage('Uploading delivery proof…');
     setError('');
     try {
       let nextPod = { ...pod };
-      if (signatureSvg) {
-        const uploaded = await uploadPODAttachment(tripName, stopName, pod.name, 'signature', signatureSvg, `signature-${pod.name}.svg`, 'text');
-        nextPod.signature = uploaded.file_url;
-      }
-      if (photo) {
-        const uploaded = await uploadPODAttachment(tripName, stopName, pod.name, 'delivery_photo', photo.base64, photo.filename);
-        nextPod.delivery_photo = uploaded.file_url;
-      }
+      const [signatureUpload, photoUpload] = await Promise.all([
+        signatureSvg
+          ? uploadPODAttachment(tripName, stopName, pod.name, 'signature', signatureSvg, `signature-${pod.name}.svg`, 'text')
+          : Promise.resolve(null),
+        photo
+          ? uploadPODAttachment(tripName, stopName, pod.name, 'delivery_photo', photo.base64, photo.filename)
+          : Promise.resolve(null),
+      ]);
+      if (signatureUpload) nextPod.signature = signatureUpload.file_url;
+      if (photoUpload) nextPod.delivery_photo = photoUpload.file_url;
       nextPod.items = nextPod.items.map((item) => ({ ...item, rejected_qty: Math.max(item.ordered_qty - item.delivered_qty, 0) }));
+      setSubmissionMessage('Finalising delivery…');
       const result = await submitProofOfDelivery(tripName, stopName, nextPod);
       const focus = result.trip.next_stop ? `?focusStop=${encodeURIComponent(result.trip.next_stop)}` : '';
       router.replace(`/trips/${encodeURIComponent(tripName)}${focus}` as never);
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : 'Could not submit Proof of Delivery.');
     } finally {
+      submissionLock.current = false;
       setSubmitting(false);
     }
   };
@@ -97,6 +126,15 @@ export default function ProofOfDeliveryScreen() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.screen}>
       <StatusBar style="dark" />
+      <Modal animationType="fade" onRequestClose={() => undefined} statusBarTranslucent transparent visible={submitting}>
+        <View style={styles.submissionOverlay}>
+          <View style={styles.submissionCard}>
+            <ActivityIndicator color={colors.ink} size="large" />
+            <Text style={styles.submissionTitle}>{submissionMessage}</Text>
+            <Text style={styles.submissionHint}>Please keep the app open.</Text>
+          </View>
+        </View>
+      </Modal>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <ScreenHeader back title="Proof of Delivery" />
         <Text style={styles.customer}>{pod.customer}</Text>
@@ -177,4 +215,8 @@ const styles = StyleSheet.create({
   submit: { alignItems: 'center', backgroundColor: colors.ink, borderRadius: radius.sm, flexDirection: 'row', gap: 10, justifyContent: 'center', minHeight: 54 },
   submitText: { color: colors.surface, fontFamily: 'Inter_600SemiBold', fontSize: 15 },
   disabled: { opacity: 0.6 },
+  submissionOverlay: { alignItems: 'center', backgroundColor: 'rgba(9, 9, 11, 0.42)', flex: 1, justifyContent: 'center', padding: spacing.xl },
+  submissionCard: { alignItems: 'center', backgroundColor: colors.surface, borderRadius: radius.md, maxWidth: 320, paddingHorizontal: 34, paddingVertical: 30, width: '100%' },
+  submissionTitle: { color: colors.ink, fontFamily: 'Inter_600SemiBold', fontSize: 16, marginTop: 18, textAlign: 'center' },
+  submissionHint: { color: colors.muted, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 7, textAlign: 'center' },
 });

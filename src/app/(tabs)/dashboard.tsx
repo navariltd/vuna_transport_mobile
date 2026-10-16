@@ -12,10 +12,11 @@ import { getOnboardingRecord } from '../../storage/onboarding';
 
 export default function DashboardScreen() {
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
-  const [driverName, setDriverName] = useState('Driver');
+  const [driverName, setDriverName] = useState('');
   const [message, setMessage] = useState('Your assigned trips will appear here.');
   const [trips, setTrips] = useState<DeliveryTrip[]>([]);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadProfile = useCallback(async () => {
@@ -33,6 +34,7 @@ export default function DashboardScreen() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not load your work profile.');
     } finally {
+      setLoading(false);
       setRefreshing(false);
     }
   }, []);
@@ -54,7 +56,8 @@ export default function DashboardScreen() {
       refreshControl={<RefreshControl colors={["#111111"]} onRefresh={() => { setRefreshing(true); void loadProfile(); }} refreshing={refreshing} tintColor="#111111" />}
     >
       <View style={styles.pageHeader}><Image source={require('../../../assets/icon.png')} style={styles.logo} /><Text style={styles.pageTitle}>Home</Text></View>
-      <Text style={styles.greeting}>Good day, {driverName}.</Text>
+      {loading ? <DashboardSkeleton /> : <>
+      <Text style={styles.greeting}>{driverName ? `Good day, ${driverName}.` : 'Good day.'}</Text>
       <Text style={styles.subtitle}>{message}</Text>
       {trips.length ? <>
         <View style={styles.sectionHeader}>
@@ -86,7 +89,26 @@ export default function DashboardScreen() {
         <Text style={styles.emptyTitle}>No assigned trips yet</Text>
         <Text style={styles.emptyText}>When a Delivery Trip is assigned to you, its stops and delivery actions will be available here.</Text>
       </View>}
+      </>}
     </ScrollView>
+  </View>;
+}
+
+function DashboardSkeleton() {
+  return <View accessibilityLabel="Loading assigned trips" accessibilityRole="progressbar" style={styles.skeleton}>
+    <View style={[styles.skeletonBlock, styles.skeletonGreeting]} />
+    <View style={[styles.skeletonBlock, styles.skeletonSubtitle]} />
+    <View style={[styles.skeletonBlock, styles.skeletonSectionTitle]} />
+    <View style={styles.skeletonCard}>
+      <View style={[styles.skeletonBlock, styles.skeletonVehicle]} />
+      <View style={[styles.skeletonBlock, styles.skeletonReference]} />
+      <View style={[styles.skeletonBlock, styles.skeletonProgress]} />
+    </View>
+    <View style={styles.skeletonCard}>
+      <View style={[styles.skeletonBlock, styles.skeletonVehicleShort]} />
+      <View style={[styles.skeletonBlock, styles.skeletonReference]} />
+      <View style={[styles.skeletonBlock, styles.skeletonProgress]} />
+    </View>
   </View>;
 }
 
@@ -121,6 +143,16 @@ const styles = StyleSheet.create({
   pageHeader: { alignItems: 'center', flexDirection: 'row', gap: 10 },
   logo: { borderRadius: 7, height: 28, width: 28 },
   pageTitle: { color: '#111111', fontFamily: 'Inter_700Bold', fontSize: 20 },
+  skeleton: { paddingTop: 30 },
+  skeletonBlock: { backgroundColor: colors.divider, borderRadius: 7 },
+  skeletonGreeting: { height: 35, width: '72%' },
+  skeletonSubtitle: { height: 16, marginTop: 18, width: '58%' },
+  skeletonSectionTitle: { height: 20, marginTop: 34, width: 150 },
+  skeletonCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 16, borderWidth: 1, marginTop: 18, padding: 18 },
+  skeletonVehicle: { height: 23, width: '54%' },
+  skeletonVehicleShort: { height: 23, width: '42%' },
+  skeletonReference: { height: 14, marginTop: 14, width: '68%' },
+  skeletonProgress: { height: 6, marginTop: 22, width: '100%' },
   greeting: { color: '#111111', fontFamily: 'Inter_700Bold', fontSize: 32, lineHeight: 39, marginTop: 28 },
   subtitle: { color: '#6B6B6B', fontFamily: 'Inter_400Regular', fontSize: 16, lineHeight: 24, marginTop: 16 },
   sectionHeader: { alignItems: 'center', flexDirection: 'row', gap: 8, marginTop: 30 },

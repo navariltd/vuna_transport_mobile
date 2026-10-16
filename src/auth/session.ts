@@ -35,18 +35,31 @@ export async function callMobileMethod(
 	method: string,
 	args: Record<string, unknown>,
 	fallback: string,
+	timeoutMs = 45000,
 ) {
   const session = await getSession();
   if (!session) throw new Error('Your mobile session has expired. Please sign in again.');
 
-	const response = await fetch(`${session.siteUrl}/api/method/${method}`, {
-		body: JSON.stringify(args),
-    headers: { 'Content-Type': 'application/json', Cookie: `sid=${session.sid}` },
-    method: 'POST',
-  });
-	const payload = await parseResponse(response, fallback);
-	if (!response.ok || payload.exc) throw new Error(getServerMessage(payload, fallback));
-  return payload.message;
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), timeoutMs);
+	try {
+		const response = await fetch(`${session.siteUrl}/api/method/${method}`, {
+			body: JSON.stringify(args),
+			headers: { 'Content-Type': 'application/json', Cookie: `sid=${session.sid}` },
+			method: 'POST',
+			signal: controller.signal,
+		});
+		const payload = await parseResponse(response, fallback);
+		if (!response.ok || payload.exc) throw new Error(getServerMessage(payload, fallback));
+		return payload.message;
+	} catch (error) {
+		if (error instanceof Error && error.name === 'AbortError') {
+			throw new Error(`${fallback} The server took too long to respond. Check your connection and try again.`);
+		}
+		throw error;
+	} finally {
+		clearTimeout(timeout);
+	}
 }
 
 export async function loginAndRegisterDevice(siteUrl: string, username: string, password: string, device: Record<string, unknown>) {

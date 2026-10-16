@@ -84,8 +84,11 @@ export default function DeliveryNoteScreen() {
         </Section>
 
         {completed ? <View style={styles.completedCard}><Ionicons color={colors.success} name="checkmark-circle" size={24} /><View style={styles.completedCopy}><Text style={styles.completedTitle}>Delivery recorded</Text><Text style={styles.completedText}>{stop.proof_of_delivery?.name || 'Proof of Delivery submitted'}</Text></View></View> : null}
+        {!completed && stop.requires_trip_start ? <View style={styles.startNotice}><Ionicons color={colors.muted} name="information-circle-outline" size={20} /><Text style={styles.startNoticeText}>Start the Delivery Trip before recording arrival at this stop.</Text></View> : null}
       </ScrollView>
-      {!completed ? <View style={styles.footer}><Pressable onPress={() => router.push(`/trips/${encodeURIComponent(tripName)}/stops/${encodeURIComponent(stopName)}/pod` as never)} style={styles.primary}><Text style={styles.primaryText}>Complete delivery</Text><Ionicons color={colors.surface} name="arrow-forward" size={20} /></Pressable></View> : null}
+      {!completed ? <View style={styles.footer}>
+        {stop.can_complete_delivery ? <Pressable onPress={() => router.push(`/trips/${encodeURIComponent(tripName)}/stops/${encodeURIComponent(stopName)}/pod` as never)} style={styles.primary}><Text style={styles.primaryText}>Complete delivery</Text><Ionicons color={colors.surface} name="arrow-forward" size={20} /></Pressable> : null}
+      </View> : null}
     </View>
   );
 }
@@ -122,6 +125,8 @@ const styles = StyleSheet.create({
   completedCopy: { marginLeft: 12 },
   completedTitle: { color: colors.success, fontFamily: 'Inter_600SemiBold', fontSize: 14 },
   completedText: { color: colors.success, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 4 },
+  startNotice: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, flexDirection: 'row', gap: 9, marginTop: spacing.xl, padding: 14 },
+  startNoticeText: { color: colors.muted, flex: 1, fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 18 },
   footer: { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1, bottom: 0, left: 0, padding: 16, paddingBottom: 28, position: 'absolute', right: 0 },
   primary: { alignItems: 'center', backgroundColor: colors.ink, borderRadius: radius.sm, flexDirection: 'row', justifyContent: 'center', minHeight: 54 },
   primaryText: { color: colors.surface, fontFamily: 'Inter_600SemiBold', fontSize: 15, marginRight: 10 },

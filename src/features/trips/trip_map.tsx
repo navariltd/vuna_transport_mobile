@@ -5,7 +5,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius } from '../../shared/theme';
 import type { DeliveryStop } from './types';
 
-const DEFAULT_MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
+const DEFAULT_MAP_STYLE = 'https://tiles.openfreemap.org/styles/bright';
 const KENYA_CENTER: [number, number] = [37.9062, -0.0236];
 
 type Coordinate = [longitude: number, latitude: number];
@@ -31,6 +31,14 @@ function coordinateBounds(coordinates: Coordinate[]): [number, number, number, n
   const longitudes = coordinates.map(([longitude]) => longitude);
   const latitudes = coordinates.map(([, latitude]) => latitude);
   return [Math.min(...longitudes), Math.min(...latitudes), Math.max(...longitudes), Math.max(...latitudes)];
+}
+
+function stopLabel(stop: DeliveryStop): string {
+  const address = stop.address_details;
+  const destination = stop.customer || address?.address_title || 'Delivery stop';
+  const locality = address?.city || address?.county || address?.state;
+
+  return locality && locality !== destination ? `${destination} · ${locality}` : destination;
 }
 
 export function TripMap({ stops, activeStop, height = 250, fullscreen = false, onClose }: TripMapProps) {
@@ -73,7 +81,7 @@ export function TripMap({ stops, activeStop, height = 250, fullscreen = false, o
   const fitStops = useCallback((animated = true) => {
     if (!mapReady || !camera.current || !stopCoordinates.length) return;
     if (stopCoordinates.length === 1) {
-      camera.current.easeTo({ center: stopCoordinates[0], duration: animated ? 500 : 0, zoom: 14 });
+      camera.current.easeTo({ center: stopCoordinates[0], duration: animated ? 500 : 0, zoom: 15 });
       return;
     }
     camera.current.fitBounds(coordinateBounds(stopCoordinates), {
@@ -97,7 +105,7 @@ export function TripMap({ stops, activeStop, height = 250, fullscreen = false, o
   };
 
   const initialViewState = stopCoordinates.length === 1
-    ? { center: stopCoordinates[0], zoom: 14 }
+    ? { center: stopCoordinates[0], zoom: 15 }
     : stopCoordinates.length > 1
       ? { bounds: coordinateBounds(stopCoordinates), padding: { top: 44, right: 44, bottom: 44, left: 44 } }
       : { center: KENYA_CENTER, zoom: 5 };
@@ -122,8 +130,15 @@ export function TripMap({ stops, activeStop, height = 250, fullscreen = false, o
             const active = stop.name === activeStop;
             return (
               <Marker anchor="bottom" id={`delivery-stop-${stop.name}`} key={stop.name} lngLat={coordinate}>
-                <View style={[styles.marker, active && styles.activeMarker]}>
-                  <Text style={[styles.markerText, active && styles.activeMarkerText]}>{stop.idx || index + 1}</Text>
+                <View style={styles.markerContainer}>
+                  {(active || zoom >= 11) ? (
+                    <View style={styles.markerLabel}>
+                      <Text numberOfLines={1} style={styles.markerLabelText}>{stopLabel(stop)}</Text>
+                    </View>
+                  ) : null}
+                  <View style={[styles.marker, active && styles.activeMarker]}>
+                    <Text style={[styles.markerText, active && styles.activeMarkerText]}>{stop.idx || index + 1}</Text>
+                  </View>
                 </View>
               </Marker>
             );
@@ -190,6 +205,9 @@ const styles = StyleSheet.create({
   container: { backgroundColor: '#E5E7E2', overflow: 'hidden', position: 'relative' },
   fullscreenContainer: { backgroundColor: '#E5E7E2', flex: 1, position: 'relative' },
   map: { flex: 1 },
+  markerContainer: { alignItems: 'center' },
+  markerLabel: { backgroundColor: 'rgba(255,255,255,0.96)', borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, marginBottom: 6, maxWidth: 210, paddingHorizontal: 9, paddingVertical: 5 },
+  markerLabelText: { color: colors.ink, fontFamily: 'Inter_600SemiBold', fontSize: 11 },
   marker: { alignItems: 'center', backgroundColor: colors.ink, borderColor: colors.surface, borderRadius: 18, borderWidth: 3, height: 36, justifyContent: 'center', width: 36 },
   activeMarker: { backgroundColor: colors.surface, borderColor: colors.ink },
   markerText: { color: colors.surface, fontFamily: 'Inter_700Bold', fontSize: 13 },

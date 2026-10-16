@@ -37,6 +37,9 @@ export type DeliveryStop = {
   coordinate_source?: string;
   details?: string;
   delivery_status?: string;
+  can_arrive?: boolean;
+  can_complete_delivery?: boolean;
+  requires_trip_start?: boolean;
   address_details?: MobileAddress;
   contact_details?: MobileContact;
   proof_of_delivery?: {
@@ -50,6 +53,7 @@ export type DeliveryStop = {
 export type DeliveryTrip = {
   name: string;
   status: string;
+  erpnext_status?: string;
   company?: string;
   vehicle?: string;
   driver?: string;
@@ -59,7 +63,37 @@ export type DeliveryTrip = {
   stop_count: number;
   completed_stop_count: number;
   next_stop?: string;
+  actual_start?: string;
+  actual_completion?: string;
+  actions?: {
+    can_start: boolean;
+    can_report_incident: boolean;
+  };
   stops: DeliveryStop[];
+};
+
+export type VehicleIncidentSummary = {
+  name: string;
+  incident_type: string;
+  incident_datetime: string;
+  severity: string;
+  description: string;
+  resolution_status: string;
+  resolution?: string;
+  resolved_on?: string;
+  vehicle_immobilized: number;
+  cargo_affected: number;
+  driver_affected: number;
+  latitude?: number;
+  longitude?: number;
+  docstatus: number;
+};
+
+export type MobileTripIncidents = {
+  trip: { name: string; vehicle: string };
+  incident_types: string[];
+  severities: string[];
+  incidents: VehicleIncidentSummary[];
 };
 
 export type DeliveryNoteItem = {
@@ -75,7 +109,15 @@ export type DeliveryNoteItem = {
 };
 
 export type DeliveryNoteDetails = {
-  trip: { name: string; status: string; vehicle?: string };
+  trip: {
+    name: string;
+    status: string;
+    erpnext_status?: string;
+    vehicle?: string;
+    actual_start?: string;
+    actual_completion?: string;
+    actions?: DeliveryTrip['actions'];
+  };
   stop: DeliveryStop;
   delivery_note: {
     name: string;
