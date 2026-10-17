@@ -15,7 +15,6 @@ type OfflineManifest = {
   assigned: AssignedTripsResponse;
   delivery_notes: DeliveryNoteDetails[];
   rejection_reasons?: string[];
-  exception_reasons?: string[];
   synced_at: string;
 };
 
@@ -38,7 +37,6 @@ export async function loadAssignedTrips(
         ),
         setCachedValue('pod-options', 'current', {
           rejectionReasons: result.data.rejection_reasons || [],
-          exceptionReasons: result.data.exception_reasons || [],
         }),
       ],
     );
@@ -218,7 +216,7 @@ export async function loadProofOfDeliveryDraft(tripName: string, stopName: strin
     if (!isConnectivityFailure(error)) throw error;
     const [details, options] = await Promise.all([
       getCachedValue<DeliveryNoteDetails>('delivery-note', `${tripName}:${stopName}`),
-      getCachedValue<{ rejectionReasons: string[]; exceptionReasons: string[] }>('pod-options', 'current'),
+      getCachedValue<{ rejectionReasons: string[] }>('pod-options', 'current'),
     ]);
     if (!details) throw error;
 
@@ -233,7 +231,6 @@ export async function loadProofOfDeliveryDraft(tripName: string, stopName: strin
       customer: note.customer,
       delivery_address: stop.address || stop.customer_address || '',
       rejection_reasons: options?.value.rejectionReasons || [],
-      exception_reasons: options?.value.exceptionReasons || [],
       items: note.items.map((item) => ({
         name: item.name,
         delivery_note_item: item.name,

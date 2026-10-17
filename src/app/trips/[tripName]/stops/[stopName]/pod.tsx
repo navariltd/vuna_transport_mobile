@@ -4,7 +4,7 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { isConnectivityFailure } from '../../../../../auth/session';
 import { ScreenHeader, Section, StateView } from '../../../../../features/trips/components';
@@ -56,8 +56,6 @@ export default function ProofOfDeliveryScreen() {
   }, [stopName, tripName]);
 
   useEffect(() => { void load(); }, [load]);
-  const rejectedTotal = useMemo(() => pod?.items.reduce((sum, item) => sum + Math.max(item.ordered_qty - item.delivered_qty, 0), 0) || 0, [pod]);
-
   const updateItem = (name: string, changes: Partial<PODItem>) => {
     setPod((current) => current ? { ...current, items: current.items.map((item) => item.name === name ? { ...item, ...changes } : item) } : current);
   };
@@ -105,7 +103,6 @@ export default function ProofOfDeliveryScreen() {
   const submit = async () => {
     if (submissionLock.current || !pod || !tripName || !stopName) return;
     if (!pod.received_by?.trim()) return setError('Enter the receiver name before submitting.');
-    if (rejectedTotal > 0 && !pod.exception_reason) return setError('Select an exception reason for the rejected quantity.');
     const missingReason = pod.items.find((item) => item.ordered_qty - item.delivered_qty > 0 && !item.rejection_reason && !item.rejection_reason_remarks);
     if (missingReason) return setError(`Select a rejection reason for ${missingReason.item_name || missingReason.item_code}.`);
 
@@ -200,8 +197,6 @@ export default function ProofOfDeliveryScreen() {
           <TextInput onChangeText={(value: string) => setPod({ ...pod, received_by: value })} placeholder="Receiver name" placeholderTextColor={colors.faint} style={styles.input} value={pod.received_by || ''} />
           <TextInput keyboardType="phone-pad" onChangeText={(value: string) => setPod({ ...pod, receiver_phone: value })} placeholder="Phone number (optional)" placeholderTextColor={colors.faint} style={styles.input} value={pod.receiver_phone || ''} />
         </Section>
-
-        {rejectedTotal > 0 ? <Section title="Delivery outcome"><View style={styles.chips}>{pod.exception_reasons.map((reason) => <Pressable key={reason} onPress={() => setPod({ ...pod, exception_reason: reason })} style={[styles.chip, pod.exception_reason === reason && styles.chipSelected]}><Text style={[styles.chipText, pod.exception_reason === reason && styles.chipTextSelected]}>{reason}</Text></Pressable>)}</View></Section> : null}
 
         <Section title="Receiver signature"><SignaturePad onChange={setSignatureSvg} /></Section>
         <Section title="Delivery photo">

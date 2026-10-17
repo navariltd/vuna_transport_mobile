@@ -159,12 +159,10 @@ export type ProofOfDeliveryDraft = {
   delivery_datetime?: string;
   received_by?: string;
   receiver_phone?: string;
-  exception_reason?: string;
   remarks?: string;
   notes?: string;
   signature?: string;
   delivery_photo?: string;
   rejection_reasons: string[];
-  exception_reasons: string[];
   items: PODItem[];
 };
