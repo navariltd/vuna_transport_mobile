@@ -31,7 +31,7 @@ export default function DashboardScreen() {
         setTrips(result.trips || []);
         setMessage(result.trips?.length ? 'Your assigned delivery work.' : 'Your assigned trips will appear here.');
       } else {
-        setMessage(result.message || 'Your driver profile needs administrator attention.');
+        setMessage('Your driver profile is not linked to this account. Please contact your administrator.');
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not load your work profile.');
