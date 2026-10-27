@@ -119,6 +119,7 @@ export type DeliveryNoteDetails = {
     actions?: DeliveryTrip['actions'];
   };
   stop: DeliveryStop;
+  proof_of_delivery?: ProofOfDeliveryDraft | null;
   delivery_note: {
     name: string;
     customer: string;

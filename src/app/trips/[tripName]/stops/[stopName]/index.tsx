@@ -38,6 +38,7 @@ export default function DeliveryNoteScreen() {
   if (error || !details) return <View style={styles.screen}><ScreenHeader back title="Delivery Note" /><StateView error={error || 'Delivery Note not found.'} onRetry={load} /></View>;
 
   const { stop, delivery_note: note } = details;
+  const submittedPod = details.proof_of_delivery?.docstatus === 1 ? details.proof_of_delivery : null;
   const phone = stop.contact_details?.mobile_no || stop.contact_details?.phone || stop.address_details?.phone;
   const address = formatAddress(stop);
   const awaitingSync = stop.delivery_status === 'Awaiting Sync'
@@ -92,6 +93,13 @@ export default function DeliveryNoteScreen() {
         </Section>
 
         {completed ? <View style={styles.completedCard}><Ionicons color={colors.success} name="checkmark-circle" size={24} /><View style={styles.completedCopy}><Text style={styles.completedTitle}>Delivery recorded</Text><Text style={styles.completedText}>{stop.proof_of_delivery?.name || 'Proof of Delivery submitted'}</Text></View></View> : null}
+        {submittedPod ? <Section title="Proof of Delivery">
+          <View style={styles.proofCard}>
+            <View style={styles.proofHeader}><View style={styles.proofIcon}><Ionicons color={colors.success} name="shield-checkmark-outline" size={23} /></View><View style={styles.proofCopy}><Text style={styles.proofTitle}>Submitted and read-only</Text><Text style={styles.proofReference}>{submittedPod.name}</Text></View></View>
+            <View style={styles.proofMeta}><View style={styles.proofMetaItem}><Text style={styles.label}>RECEIVED BY</Text><Text style={styles.proofValue}>{submittedPod.received_by || 'Not provided'}</Text></View>{submittedPod.delivery_datetime ? <View style={styles.proofMetaItem}><Text style={styles.label}>RECEIVED AT</Text><Text style={styles.proofValue}>{formatDateTime(submittedPod.delivery_datetime)}</Text></View> : null}</View>
+            <View style={styles.proofItems}>{submittedPod.items.map((item) => <View key={item.name} style={styles.proofItem}><View style={styles.itemCopy}><Text style={styles.itemName}>{item.item_name || item.item_code}</Text><Text style={styles.itemCode}>{item.item_code}</Text></View><View style={styles.quantitySummary}><Text style={styles.acceptedQuantity}>{item.delivered_qty} accepted</Text><Text style={item.rejected_qty > 0 ? styles.rejectedQuantity : styles.proofSubtle}>{item.rejected_qty} rejected</Text></View></View>)}</View>
+          </View>
+        </Section> : null}
         {awaitingSync ? <View style={styles.pendingCard}><Ionicons color={colors.warning} name="cloud-upload-outline" size={24} /><View style={styles.completedCopy}><Text style={styles.pendingTitle}>Delivery saved</Text><Text style={styles.pendingText}>Awaiting synchronization</Text></View></View> : null}
         {!deliveryRecorded && stop.requires_trip_start ? <View style={styles.startNotice}><Ionicons color={colors.muted} name="information-circle-outline" size={20} /><Text style={styles.startNoticeText}>Start the Delivery Trip before recording arrival at this stop.</Text></View> : null}
       </ScrollView>
@@ -137,6 +145,21 @@ const styles = StyleSheet.create({
   pendingCard: { alignItems: 'center', backgroundColor: colors.warningSoft, borderRadius: radius.md, flexDirection: 'row', marginTop: spacing.xl, padding: spacing.lg },
   pendingTitle: { color: colors.warning, fontFamily: 'Inter_600SemiBold', fontSize: 14 },
   pendingText: { color: colors.warning, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 4 },
+  proofCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, padding: spacing.md },
+  proofHeader: { alignItems: 'center', flexDirection: 'row' },
+  proofIcon: { alignItems: 'center', backgroundColor: colors.successSoft, borderRadius: 12, height: 44, justifyContent: 'center', width: 44 },
+  proofCopy: { flex: 1, marginLeft: 12 },
+  proofTitle: { color: colors.success, fontFamily: 'Inter_600SemiBold', fontSize: 14 },
+  proofReference: { color: colors.muted, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 4 },
+  proofMeta: { borderBottomColor: colors.divider, borderBottomWidth: 1, borderTopColor: colors.divider, borderTopWidth: 1, flexDirection: 'row', gap: 20, marginTop: spacing.md, paddingVertical: 13 },
+  proofMetaItem: { flex: 1 },
+  proofValue: { color: colors.ink, fontFamily: 'Inter_600SemiBold', fontSize: 13, marginTop: 5 },
+  proofItems: { marginTop: 4 },
+  proofItem: { alignItems: 'center', borderBottomColor: colors.divider, borderBottomWidth: 1, flexDirection: 'row', paddingVertical: 12 },
+  quantitySummary: { alignItems: 'flex-end' },
+  acceptedQuantity: { color: colors.success, fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  rejectedQuantity: { color: colors.danger, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginTop: 4 },
+  proofSubtle: { color: colors.muted, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 4 },
   startNotice: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, flexDirection: 'row', gap: 9, marginTop: spacing.xl, padding: 14 },
   startNoticeText: { color: colors.muted, flex: 1, fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 18 },
   footer: { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1, bottom: 0, left: 0, padding: 16, paddingBottom: 28, position: 'absolute', right: 0 },
