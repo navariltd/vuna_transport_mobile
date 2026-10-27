@@ -23,8 +23,11 @@ export default function ProfileScreen() {
       if (!record) return router.replace('/');
       const loaded = await loadDriverProfile(record.installationId, record.deviceIdentifier);
       const profile = loaded.data;
-      if (profile.linked) setDriver(profile.driver);
-      else setMessage(profile.message || 'Your driver profile needs attention.');
+      if (profile.linked && profile.driver) {
+        setDriver(profile.driver);
+      } else {
+        setMessage('Your driver profile is not linked to this account. Please contact your administrator.');
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not load your profile.');
     } finally {

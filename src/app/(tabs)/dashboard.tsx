@@ -1,8 +1,8 @@
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, useFonts } from '@expo-google-fonts/inter';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StatusBadge, TripProgress, formatDateTime } from '../../features/trips/components';
 import type { DeliveryTrip } from '../../features/trips/types';
@@ -31,7 +31,7 @@ export default function DashboardScreen() {
         setTrips(result.trips || []);
         setMessage(result.trips?.length ? 'Your assigned delivery work.' : 'Your assigned trips will appear here.');
       } else {
-        setMessage(result.message || 'Your driver profile needs administrator attention.');
+        setMessage('Your driver profile is not linked to this account. Please contact your administrator.');
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not load your work profile.');
@@ -41,7 +41,11 @@ export default function DashboardScreen() {
     }
   }, []);
 
-  useEffect(() => { void loadProfile(); }, [loadProfile]);
+  useFocusEffect(useCallback(() => {
+    void loadProfile();
+    const refreshTimer = setInterval(() => void loadProfile(), 30000);
+    return () => clearInterval(refreshTimer);
+  }, [loadProfile]));
 
   const activeTrips = trips
     .filter((trip) => !['Completed', 'Cancelled'].includes(trip.status))

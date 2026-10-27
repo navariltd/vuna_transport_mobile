@@ -47,6 +47,7 @@
           "cameraPermission": "Allow Vuna Transport to scan setup QR codes."
         }
       ],
+      "expo-notifications",
       "expo-sqlite"
     ],
     "ios": {
@@ -54,6 +55,13 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Allow Vuna Transport to show your position relative to delivery stops."
       }
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "2a2aac36-8e28-4291-acc1-c3870cdea239"
+      }
+    },
+    "owner": "emmanuelmwendwa"
   }
 }

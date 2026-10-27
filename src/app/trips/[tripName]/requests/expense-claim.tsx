@@ -6,7 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { createExpenseClaim, getMobileRequestSetup } from '../../../../features/requests/api';
-import { RequestScreen, SubmitButton, requestStyles } from '../../../../features/requests/components';
+import { FieldError, RequestScreen, SubmitButton, requestStyles } from '../../../../features/requests/components';
 import type { CreatedMobileRequest, MobileRequestSetup } from '../../../../features/requests/types';
 import { colors, radius, spacing } from '../../../../shared/theme';
 
@@ -19,6 +19,7 @@ type ExpenseLine = {
 };
 
 const MAX_EXPENSE_ROWS = 20;
+type ExpenseField = 'expenseType' | 'amount' | 'expenseDate';
 
 export default function ExpenseClaimRequestScreen() {
   const { tripName } = useLocalSearchParams<{ tripName: string }>();
@@ -31,6 +32,7 @@ export default function ExpenseClaimRequestScreen() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [created, setCreated] = useState<CreatedMobileRequest | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const requestId = useRef(Crypto.randomUUID());
 
   const load = useCallback(async () => {
@@ -49,6 +51,11 @@ export default function ExpenseClaimRequestScreen() {
 
   const updateExpense = (id: string, changes: Partial<ExpenseLine>) => {
     setExpenses((current) => current.map((row) => row.id === id ? { ...row, ...changes } : row));
+    setFieldErrors((current) => {
+      const next = { ...current };
+      (Object.keys(changes) as ExpenseField[]).forEach((field) => delete next[`${id}.${field}`]);
+      return next;
+    });
   };
 
   const removeExpense = (id: string) => {
@@ -59,8 +66,17 @@ export default function ExpenseClaimRequestScreen() {
   const submit = async () => {
     if (!tripName || submitting) return;
     if (!setup?.permissions.expense_claim) return setError('Your account cannot create Expense Claims. Contact your administrator.');
-    const incompleteRow = expenses.findIndex((row) => !row.expenseType || !(Number(row.amount) > 0) || !row.expenseDate);
-    if (incompleteRow >= 0) return setError(`Complete the expense type, date, and amount in row ${incompleteRow + 1}.`);
+    const nextFieldErrors: Record<string, string> = {};
+    expenses.forEach((row) => {
+      if (!row.expenseType) nextFieldErrors[`${row.id}.expenseType`] = 'Select an expense type.';
+      if (!(Number(row.amount) > 0)) nextFieldErrors[`${row.id}.amount`] = 'Enter an amount greater than zero.';
+      if (!row.expenseDate) nextFieldErrors[`${row.id}.expenseDate`] = 'Enter the expense date.';
+    });
+    if (Object.keys(nextFieldErrors).length) {
+      setFieldErrors(nextFieldErrors);
+      return setError('Complete the highlighted fields before submitting.');
+    }
+    setFieldErrors({});
     setSubmitting(true);
     setError('');
     try {
@@ -115,10 +131,11 @@ export default function ExpenseClaimRequestScreen() {
           </Pressable> : null}
         </View>
         <Text style={styles.fieldLabel}>EXPENSE TYPE</Text>
-        <Pressable onPress={() => setOpenTypeRow((current) => current === expense.id ? null : expense.id)} style={styles.selectButton}>
+        <Pressable onPress={() => setOpenTypeRow((current) => current === expense.id ? null : expense.id)} style={[styles.selectButton, fieldErrors[`${expense.id}.expenseType`] && styles.invalidSelect]}>
           <Text numberOfLines={1} style={[styles.selectText, !expense.expenseType && styles.placeholder]}>{expense.expenseType || 'Select expense type'}</Text>
           <Ionicons color={colors.muted} name={openTypeRow === expense.id ? 'chevron-up' : 'chevron-down'} size={18} />
         </Pressable>
+        <FieldError message={fieldErrors[`${expense.id}.expenseType`]} />
         {openTypeRow === expense.id ? <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled style={styles.typeDropdown}>
           {(setup?.expense_types || []).length ? setup?.expense_types.map((expenseType) => <Pressable
             key={expenseType}
@@ -132,11 +149,13 @@ export default function ExpenseClaimRequestScreen() {
         <View style={styles.fieldRow}>
           <View style={styles.fieldColumn}>
             <Text style={styles.fieldLabel}>AMOUNT</Text>
-            <TextInput keyboardType="decimal-pad" onChangeText={(amount) => updateExpense(expense.id, { amount })} placeholder="0.00" placeholderTextColor={colors.faint} style={requestStyles.input} value={expense.amount} />
+            <TextInput keyboardType="decimal-pad" onChangeText={(amount) => updateExpense(expense.id, { amount })} placeholder="0.00" placeholderTextColor={colors.faint} style={[requestStyles.input, fieldErrors[`${expense.id}.amount`] && requestStyles.invalidInput]} value={expense.amount} />
+            <FieldError message={fieldErrors[`${expense.id}.amount`]} />
           </View>
           <View style={styles.fieldColumn}>
             <Text style={styles.fieldLabel}>EXPENSE DATE</Text>
-            <TextInput onChangeText={(expenseDate) => updateExpense(expense.id, { expenseDate })} placeholder="YYYY-MM-DD" placeholderTextColor={colors.faint} style={requestStyles.input} value={expense.expenseDate} />
+            <TextInput onChangeText={(expenseDate) => updateExpense(expense.id, { expenseDate })} placeholder="YYYY-MM-DD" placeholderTextColor={colors.faint} style={[requestStyles.input, fieldErrors[`${expense.id}.expenseDate`] && requestStyles.invalidInput]} value={expense.expenseDate} />
+            <FieldError message={fieldErrors[`${expense.id}.expenseDate`]} />
           </View>
         </View>
         <Text style={styles.fieldLabel}>DESCRIPTION</Text>
@@ -182,6 +201,7 @@ const styles = StyleSheet.create({
   rowTitle: { color: colors.ink, fontFamily: 'Inter_700Bold', fontSize: 14 },
   fieldLabel: { color: colors.muted, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.8, marginBottom: 8, marginTop: 14 },
   selectButton: { alignItems: 'center', backgroundColor: colors.background, borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, flexDirection: 'row', minHeight: 50, paddingHorizontal: 13 },
+  invalidSelect: { backgroundColor: colors.dangerSoft, borderColor: colors.danger },
   selectText: { color: colors.ink, flex: 1, fontFamily: 'Inter_500Medium', fontSize: 14 },
   placeholder: { color: colors.faint },
   typeDropdown: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, marginTop: 6, maxHeight: 210 },

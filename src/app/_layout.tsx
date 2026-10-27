@@ -13,6 +13,7 @@ export default function RootLayout() {
           <Stack.Screen name="sync-center" />
           <Stack.Screen name="trips/[tripName]/index" />
           <Stack.Screen name="trips/[tripName]/incidents" />
+          <Stack.Screen name="trips/[tripName]/requests/index" />
           <Stack.Screen name="trips/[tripName]/requests/expense-claim" />
           <Stack.Screen name="trips/[tripName]/requests/material-request" />
           <Stack.Screen name="trips/[tripName]/stops/[stopName]/index" />

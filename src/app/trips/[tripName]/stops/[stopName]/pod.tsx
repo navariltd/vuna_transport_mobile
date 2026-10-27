@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { isConnectivityFailure } from '../../../../../auth/session';
+import { FieldError, TaskErrorBanner } from '../../../../../features/requests/components';
 import { ScreenHeader, Section, StateView } from '../../../../../features/trips/components';
 import type { PODItem, ProofOfDeliveryDraft } from '../../../../../features/trips/types';
 import { SignaturePad } from '../../../../../features/proof-of-delivery/signature_pad';
@@ -29,6 +30,8 @@ export default function ProofOfDeliveryScreen() {
   const [photo, setPhoto] = useState<{ uri: string; filename: string } | null>(null);
   const [queuedOperationId, setQueuedOperationId] = useState<string | null>(null);
   const [queuedStatus, setQueuedStatus] = useState<OfflineOperationStatus | null>(null);
+  const contentRef = useRef<ScrollView>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (!tripName || !stopName) return;
@@ -56,8 +59,14 @@ export default function ProofOfDeliveryScreen() {
   }, [stopName, tripName]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (error) requestAnimationFrame(() => contentRef.current?.scrollTo({ y: 0, animated: true }));
+  }, [error]);
   const updateItem = (name: string, changes: Partial<PODItem>) => {
     setPod((current) => current ? { ...current, items: current.items.map((item) => item.name === name ? { ...item, ...changes } : item) } : current);
+    if (changes.rejection_reason || changes.rejection_reason_remarks) {
+      setFieldErrors((current) => { const next = { ...current }; delete next[`rejection.${name}`]; return next; });
+    }
   };
 
   const setOutcome = (accepted: boolean) => {
@@ -102,9 +111,14 @@ export default function ProofOfDeliveryScreen() {
 
   const submit = async () => {
     if (submissionLock.current || !pod || !tripName || !stopName) return;
-    if (!pod.received_by?.trim()) return setError('Enter the receiver name before submitting.');
+    const nextFieldErrors: Record<string, string> = {};
+    if (!pod.received_by?.trim()) nextFieldErrors.receivedBy = 'Enter the receiver name.';
     const missingReason = pod.items.find((item) => item.ordered_qty - item.delivered_qty > 0 && !item.rejection_reason && !item.rejection_reason_remarks);
-    if (missingReason) return setError(`Select a rejection reason for ${missingReason.item_name || missingReason.item_code}.`);
+    if (missingReason) nextFieldErrors[`rejection.${missingReason.name}`] = 'Select a rejection reason or add details.';
+    if (Object.keys(nextFieldErrors).length) {
+      setFieldErrors(nextFieldErrors);
+      return setError('Complete the highlighted fields before submitting.');
+    }
 
     submissionLock.current = true;
     setSubmitting(true);
@@ -171,8 +185,9 @@ export default function ProofOfDeliveryScreen() {
           </View>
         </View>
       </Modal>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" ref={contentRef}>
         <ScreenHeader back title="Proof of Delivery" />
+        {error ? <TaskErrorBanner message={error} title="Could not complete delivery" /> : null}
         {queuedStatus ? <View style={styles.queuedNotice}><Ionicons color={colors.warning} name="save-outline" size={18} /><View style={styles.queuedNoticeCopy}><Text style={styles.queuedNoticeTitle}>Saved on this device</Text><Text style={styles.queuedNoticeMessage}>Status: {queuedStatus}. Review the details and submit again when ready.</Text></View></View> : null}
         <Text style={styles.customer}>{pod.customer}</Text>
         <Text style={styles.reference}>{pod.delivery_note}</Text>
@@ -188,13 +203,14 @@ export default function ProofOfDeliveryScreen() {
             return <View key={item.name} style={styles.itemCard}>
               <View style={styles.itemHeader}><View style={styles.itemCopy}><Text style={styles.itemName}>{item.item_name || item.item_code}</Text><Text style={styles.itemMeta}>{item.item_code}{item.batch_no ? ` · Batch ${item.batch_no}` : ''}</Text></View><Text style={styles.ordered}>of {item.ordered_qty} {item.uom}</Text></View>
               <View style={styles.quantityRow}><View style={styles.quantityField}><Text style={styles.inputLabel}>ACCEPTED · {item.uom}</Text><TextInput keyboardType="decimal-pad" onChangeText={(value: string) => updateItem(item.name, { delivered_qty: Math.min(Math.max(Number(value) || 0, 0), item.ordered_qty) })} selectTextOnFocus style={styles.quantityInput} value={String(item.delivered_qty)} /></View><View style={styles.quantityDivider} /><View style={styles.quantityField}><Text style={styles.inputLabel}>REJECTED · {item.uom}</Text><Text style={[styles.rejected, rejected > 0 && styles.rejectedActive]}>{rejected}</Text></View></View>
-              {rejected > 0 ? <View style={styles.reasons}><Text style={styles.inputLabel}>REJECTION REASON</Text><View style={styles.chips}>{pod.rejection_reasons.map((reason) => <Pressable key={reason} onPress={() => updateItem(item.name, { rejection_reason: reason })} style={[styles.chip, item.rejection_reason === reason && styles.chipSelected]}><Text style={[styles.chipText, item.rejection_reason === reason && styles.chipTextSelected]}>{reason}</Text></Pressable>)}</View><TextInput multiline onChangeText={(value: string) => updateItem(item.name, { rejection_reason_remarks: value })} placeholder="Additional details" placeholderTextColor={colors.faint} style={styles.textAreaSmall} value={item.rejection_reason_remarks || ''} /></View> : null}
+              {rejected > 0 ? <View style={[styles.reasons, fieldErrors[`rejection.${item.name}`] && styles.invalidReasons]}><Text style={styles.inputLabel}>REJECTION REASON</Text><View style={styles.chips}>{pod.rejection_reasons.map((reason) => <Pressable key={reason} onPress={() => updateItem(item.name, { rejection_reason: reason })} style={[styles.chip, item.rejection_reason === reason && styles.chipSelected]}><Text style={[styles.chipText, item.rejection_reason === reason && styles.chipTextSelected]}>{reason}</Text></Pressable>)}</View><TextInput multiline onChangeText={(value: string) => updateItem(item.name, { rejection_reason_remarks: value })} placeholder="Additional details" placeholderTextColor={colors.faint} style={styles.textAreaSmall} value={item.rejection_reason_remarks || ''} /><FieldError message={fieldErrors[`rejection.${item.name}`]} /></View> : null}
             </View>;
           })}
         </Section>
 
         <Section title="Receiver">
-          <TextInput onChangeText={(value: string) => setPod({ ...pod, received_by: value })} placeholder="Receiver name" placeholderTextColor={colors.faint} style={styles.input} value={pod.received_by || ''} />
+          <TextInput onChangeText={(value: string) => { setPod({ ...pod, received_by: value }); setFieldErrors((current) => { const next = { ...current }; delete next.receivedBy; return next; }); }} placeholder="Receiver name" placeholderTextColor={colors.faint} style={[styles.input, fieldErrors.receivedBy && styles.invalidInput]} value={pod.received_by || ''} />
+          <FieldError message={fieldErrors.receivedBy} />
           <TextInput keyboardType="phone-pad" onChangeText={(value: string) => setPod({ ...pod, receiver_phone: value })} placeholder="Phone number (optional)" placeholderTextColor={colors.faint} style={styles.input} value={pod.receiver_phone || ''} />
         </Section>
 
@@ -205,7 +221,6 @@ export default function ProofOfDeliveryScreen() {
           </Pressable>
         </Section>
         <Section title="Remarks"><TextInput multiline onChangeText={(value: string) => setPod({ ...pod, remarks: value })} placeholder="Add delivery notes or observations" placeholderTextColor={colors.faint} style={styles.textArea} value={pod.remarks || ''} /></Section>
-        {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
       <View style={styles.footer}><Pressable disabled={submitting} onPress={submit} style={[styles.submit, submitting && styles.disabled]}>{submitting ? <ActivityIndicator color={colors.surface} /> : <><Text style={styles.submitText}>Confirm and complete stop</Text><Ionicons color={colors.surface} name="checkmark" size={21} /></>}</Pressable></View>
     </KeyboardAvoidingView>
@@ -234,18 +249,19 @@ const styles = StyleSheet.create({
   rejected: { color: colors.muted, fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 9 },
   rejectedActive: { color: colors.danger },
   reasons: { borderTopColor: colors.divider, borderTopWidth: 1, marginTop: 16, paddingTop: 16 },
+  invalidReasons: { borderTopColor: colors.danger },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
   chip: { backgroundColor: colors.background, borderColor: colors.border, borderRadius: 99, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 9 },
   chipSelected: { backgroundColor: colors.ink, borderColor: colors.ink },
   chipText: { color: colors.ink, fontFamily: 'Inter_500Medium', fontSize: 11 },
   chipTextSelected: { color: colors.surface },
   input: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, color: colors.ink, fontFamily: 'Inter_500Medium', fontSize: 15, marginBottom: 10, minHeight: 50, paddingHorizontal: 14 },
+  invalidInput: { backgroundColor: colors.dangerSoft, borderColor: colors.danger },
   textAreaSmall: { backgroundColor: colors.background, borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, color: colors.ink, fontFamily: 'Inter_400Regular', fontSize: 13, marginTop: 12, minHeight: 72, padding: 12, textAlignVertical: 'top' },
   photoButton: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderStyle: 'dashed', borderWidth: 1, height: 170, justifyContent: 'center', overflow: 'hidden' },
   photo: { height: '100%', width: '100%' },
   photoText: { color: colors.ink, fontFamily: 'Inter_600SemiBold', fontSize: 13, marginTop: 10 },
   textArea: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, color: colors.ink, fontFamily: 'Inter_400Regular', fontSize: 14, minHeight: 120, padding: 14, textAlignVertical: 'top' },
-  error: { color: colors.danger, fontFamily: 'Inter_500Medium', fontSize: 13, lineHeight: 20, marginTop: spacing.lg },
   footer: { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1, bottom: 0, left: 0, padding: 16, paddingBottom: 28, position: 'absolute', right: 0 },
   submit: { alignItems: 'center', backgroundColor: colors.ink, borderRadius: radius.sm, flexDirection: 'row', gap: 10, justifyContent: 'center', minHeight: 54 },
   submitText: { color: colors.surface, fontFamily: 'Inter_600SemiBold', fontSize: 15 },

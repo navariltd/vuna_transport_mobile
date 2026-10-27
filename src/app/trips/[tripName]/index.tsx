@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
 import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { DeliveryStopCard, ScreenHeader, SemiCircleTripProgress, StateView, StatusBadge, formatDateTime } from '../../../features/trips/components';
+import { TaskErrorBanner } from '../../../features/requests/components';
 import { startDeliveryTrip } from '../../../features/trips/api';
 import type { DeliveryTrip } from '../../../features/trips/types';
 import { cacheStartedTrip, loadTripDetails } from '../../../offline/trip_repository';
@@ -57,6 +58,7 @@ export default function DeliveryTripScreen() {
   if (error || !trip) return <View style={styles.screen}><ScreenHeader back title="Delivery Trip" /><StateView error={error || 'Delivery Trip not found.'} onRetry={load} /></View>;
 
   const currentStop = focusStop || trip.next_stop;
+  const tripCompleted = Boolean(trip.actual_completion) || trip.status.toLowerCase() === 'completed';
   return (
     <View style={styles.screen}>
       <StatusBar style="dark" />
@@ -81,7 +83,7 @@ export default function DeliveryTripScreen() {
           <Ionicons color={colors.surface} name="play" size={19} />
           <Text style={styles.primaryActionText}>{actionLoading ? 'Starting trip…' : 'Start trip'}</Text>
         </Pressable> : null}
-        {actionError ? <Text style={styles.actionError}>{actionError}</Text> : null}
+        {actionError ? <TaskErrorBanner message={actionError} title="Could not start the trip" /> : null}
 
         <View style={styles.sectionHeading}>
           <Text style={styles.sectionTitle}>Delivery stops</Text>
@@ -90,10 +92,14 @@ export default function DeliveryTripScreen() {
               <Ionicons color={colors.danger} name="warning-outline" size={17} />
               <Text style={styles.incidentButtonText}>Incident</Text>
             </Pressable> : null}
-            <Pressable onPress={() => setRequestMenuOpen(true)} style={styles.requestButton}>
+            <Pressable onPress={() => router.push(`/trips/${encodeURIComponent(trip.name)}/requests` as never)} style={styles.requestsButton}>
+              <Ionicons color={colors.ink} name="documents-outline" size={17} />
+              <Text style={styles.requestsButtonText}>Requests</Text>
+            </Pressable>
+            {!tripCompleted ? <Pressable onPress={() => setRequestMenuOpen(true)} style={styles.requestButton}>
               <Ionicons color={colors.surface} name="add" size={18} />
               <Text style={styles.requestButtonText}>Request</Text>
-            </Pressable>
+            </Pressable> : null}
           </View>
         </View>
         {trip.stops.map((stop) => (
@@ -148,6 +154,8 @@ const styles = StyleSheet.create({
   incidentButtonText: { color: colors.danger, fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   requestButton: { alignItems: 'center', backgroundColor: colors.ink, borderRadius: 99, flexDirection: 'row', gap: 4, minHeight: 38, paddingHorizontal: 14 },
   requestButtonText: { color: colors.surface, fontFamily: 'Inter_600SemiBold', fontSize: 13 },
+  requestsButton: { alignItems: 'center', borderColor: colors.border, borderRadius: 99, borderWidth: 1, flexDirection: 'row', gap: 5, minHeight: 38, paddingHorizontal: 11 },
+  requestsButtonText: { color: colors.ink, fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   modalBackdrop: { backgroundColor: 'rgba(9, 9, 11, 0.4)', flex: 1, justifyContent: 'flex-end' },
   requestSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: spacing.xl, paddingBottom: 38 },
   sheetHandle: { alignSelf: 'center', backgroundColor: colors.border, borderRadius: 99, height: 4, marginBottom: spacing.lg, width: 42 },
