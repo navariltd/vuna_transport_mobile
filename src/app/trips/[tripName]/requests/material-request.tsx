@@ -6,7 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { createMaterialRequest, getMobileRequestSetup, searchMaterialRequestItems } from '../../../../features/requests/api';
-import { OptionList, RequestScreen, SubmitButton, requestStyles } from '../../../../features/requests/components';
+import { FieldError, OptionList, RequestScreen, SubmitButton, requestStyles } from '../../../../features/requests/components';
 import type { CreatedMobileRequest, MaterialRequestItemOption, MobileRequestSetup } from '../../../../features/requests/types';
 import { colors, radius } from '../../../../shared/theme';
 
@@ -28,6 +28,7 @@ export default function MaterialRequestScreen() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [created, setCreated] = useState<CreatedMobileRequest | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const requestId = useRef(Crypto.randomUUID());
 
   const load = useCallback(async () => {
@@ -71,8 +72,17 @@ export default function MaterialRequestScreen() {
     if (!tripName || submitting) return;
     if (!setup?.permissions.material_request) return setError('Your account cannot create Material Requests. Contact your administrator.');
     if (!items.length) return setError('Add at least one Item.');
-    if (items.some((item) => !(Number(item.qty) > 0))) return setError('Every Item must have a quantity greater than zero.');
-    if (purpose === 'Material Issue' && !warehouse) return setError('Select the source Warehouse for a Material Issue.');
+    const nextFieldErrors: Record<string, string> = {};
+    items.forEach((item) => {
+      if (!(Number(item.qty) > 0)) nextFieldErrors[`item.${item.name}`] = 'Enter a quantity greater than zero.';
+    });
+    if (!scheduleDate) nextFieldErrors.scheduleDate = 'Enter the required date.';
+    if (purpose === 'Material Issue' && !warehouse) nextFieldErrors.warehouse = 'Select the source warehouse.';
+    if (Object.keys(nextFieldErrors).length) {
+      setFieldErrors(nextFieldErrors);
+      return setError('Complete the highlighted fields before submitting.');
+    }
+    setFieldErrors({});
     setSubmitting(true);
     setError('');
     try {
@@ -105,7 +115,7 @@ export default function MaterialRequestScreen() {
       <Text style={requestStyles.intro}>Request stock or purchasing support for this trip. The request will be saved as a draft for review.</Text>
       <Text style={requestStyles.label}>Purpose</Text>
       <OptionList
-        onSelect={(value) => { setPurpose(value as 'Purchase' | 'Material Issue'); if (value === 'Purchase') setWarehouse(''); }}
+        onSelect={(value) => { setPurpose(value as 'Purchase' | 'Material Issue'); setFieldErrors({}); if (value === 'Purchase') setWarehouse(''); }}
         options={[{ label: 'Purchase', value: 'Purchase', detail: 'The item needs to be procured.' }, { label: 'Material Issue', value: 'Material Issue', detail: 'The item should be issued from a company warehouse.' }]}
         selected={purpose}
       />
@@ -113,13 +123,15 @@ export default function MaterialRequestScreen() {
         <Text style={requestStyles.label}>Source warehouse</Text>
         <OptionList
           emptyText="No permitted Warehouses are available for this company."
-          onSelect={setWarehouse}
+          onSelect={(value) => { setWarehouse(value); setFieldErrors((current) => { const next = { ...current }; delete next.warehouse; return next; }); }}
           options={(setup?.warehouses || []).map((row) => ({ label: row.warehouse_name || row.name, value: row.name, detail: row.name }))}
           selected={warehouse}
         />
+        <FieldError message={fieldErrors.warehouse} />
       </> : null}
       <Text style={requestStyles.label}>Required by</Text>
-      <TextInput onChangeText={setScheduleDate} placeholder="YYYY-MM-DD" placeholderTextColor={colors.faint} style={requestStyles.input} value={scheduleDate} />
+      <TextInput onChangeText={(value) => { setScheduleDate(value); setFieldErrors((current) => { const next = { ...current }; delete next.scheduleDate; return next; }); }} placeholder="YYYY-MM-DD" placeholderTextColor={colors.faint} style={[requestStyles.input, fieldErrors.scheduleDate && requestStyles.invalidInput]} value={scheduleDate} />
+      <FieldError message={fieldErrors.scheduleDate} />
       <Text style={requestStyles.label}>Items</Text>
       <TextInput onChangeText={setSearchText} placeholder="Search item code or name" placeholderTextColor={colors.faint} style={requestStyles.input} value={searchText} />
       {searching ? <Text style={styles.searchHint}>Searching…</Text> : null}
@@ -129,7 +141,10 @@ export default function MaterialRequestScreen() {
       </Pressable>)}</ScrollView> : null}
       {items.map((item) => <View key={item.name} style={styles.itemRow}>
         <View style={styles.itemCopy}><Text style={styles.itemName}>{item.item_name || item.name}</Text><Text style={styles.itemMeta}>{item.name} · {item.stock_uom}</Text></View>
-        <TextInput keyboardType="decimal-pad" onChangeText={(qty) => setItems((current) => current.map((row) => row.name === item.name ? { ...row, qty } : row))} style={styles.qtyInput} value={item.qty} />
+        <View style={styles.qtyColumn}>
+          <TextInput keyboardType="decimal-pad" onChangeText={(qty) => { setItems((current) => current.map((row) => row.name === item.name ? { ...row, qty } : row)); setFieldErrors((current) => { const next = { ...current }; delete next[`item.${item.name}`]; return next; }); }} style={[styles.qtyInput, fieldErrors[`item.${item.name}`] && styles.invalidQty]} value={item.qty} />
+          <FieldError message={fieldErrors[`item.${item.name}`]} />
+        </View>
         <Pressable hitSlop={10} onPress={() => setItems((current) => current.filter((row) => row.name !== item.name))}><Ionicons color={colors.danger} name="close-circle-outline" size={23} /></Pressable>
       </View>)}
       <Text style={requestStyles.label}>Remarks</Text>
@@ -157,5 +172,7 @@ const styles = StyleSheet.create({
   itemCopy: { flex: 1 },
   itemName: { color: colors.ink, fontFamily: 'Inter_600SemiBold', fontSize: 13 },
   itemMeta: { color: colors.muted, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 },
+  qtyColumn: { alignItems: 'stretch', width: 92 },
   qtyInput: { borderBottomColor: colors.ink, borderBottomWidth: 1, color: colors.ink, fontFamily: 'Inter_600SemiBold', fontSize: 15, minWidth: 52, padding: 5, textAlign: 'center' },
+  invalidQty: { backgroundColor: colors.dangerSoft, borderBottomColor: colors.danger },
 });

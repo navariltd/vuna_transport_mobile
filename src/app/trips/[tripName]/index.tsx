@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
 import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { DeliveryStopCard, ScreenHeader, SemiCircleTripProgress, StateView, StatusBadge, formatDateTime } from '../../../features/trips/components';
+import { TaskErrorBanner } from '../../../features/requests/components';
 import { startDeliveryTrip } from '../../../features/trips/api';
 import type { DeliveryTrip } from '../../../features/trips/types';
 import { cacheStartedTrip, loadTripDetails } from '../../../offline/trip_repository';
@@ -82,7 +83,7 @@ export default function DeliveryTripScreen() {
           <Ionicons color={colors.surface} name="play" size={19} />
           <Text style={styles.primaryActionText}>{actionLoading ? 'Starting trip…' : 'Start trip'}</Text>
         </Pressable> : null}
-        {actionError ? <Text style={styles.actionError}>{actionError}</Text> : null}
+        {actionError ? <TaskErrorBanner message={actionError} title="Could not start the trip" /> : null}
 
         <View style={styles.sectionHeading}>
           <Text style={styles.sectionTitle}>Delivery stops</Text>
