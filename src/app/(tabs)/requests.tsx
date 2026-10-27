@@ -8,8 +8,9 @@ import type { MobileRequestDetail, MobileRequestHistoryItem } from '../../featur
 import { ConnectivityBadge } from '../../offline/components';
 import { loadMobileRequestDetails, loadMobileRequestHistory } from '../../offline/request_repository';
 import { colors, radius, spacing } from '../../shared/theme';
+import { ScreenHeader } from '../../features/trips/components';
 
-export default function RequestsScreen() {
+export default function RequestsScreen({ tripName }: { tripName?: string }) {
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
   const [requests, setRequests] = useState<MobileRequestHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,7 +24,7 @@ export default function RequestsScreen() {
   const load = useCallback(async () => {
     try {
       setError('');
-      const loaded = await loadMobileRequestHistory();
+      const loaded = await loadMobileRequestHistory(tripName);
       setRequests(loaded.data);
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : 'Could not load your requests.');
@@ -31,7 +32,7 @@ export default function RequestsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [tripName]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
@@ -58,9 +59,9 @@ export default function RequestsScreen() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl colors={[colors.ink]} onRefresh={() => { setRefreshing(true); void load(); }} refreshing={refreshing} tintColor={colors.ink} />}
     >
-      <View style={styles.pageHeader}><Image source={require('../../../assets/icon.png')} style={styles.logo} /><Text style={styles.pageTitle}>Requests</Text><ConnectivityBadge /></View>
+      {tripName ? <ScreenHeader back title="Trip requests" /> : <View style={styles.pageHeader}><Image source={require('../../../assets/icon.png')} style={styles.logo} /><Text style={styles.pageTitle}>Requests</Text><ConnectivityBadge /></View>}
       <Text style={styles.title}>Your requests</Text>
-      <Text style={styles.subtitle}>Follow the approval and processing status of requests raised from your trips.</Text>
+      <Text style={styles.subtitle}>{tripName ? `Requests raised from ${tripName}.` : 'Follow the approval and processing status of requests raised from your trips.'}</Text>
       {loading ? <RequestListSkeleton /> : error ? <View style={styles.messageCard}>
         <Ionicons color={colors.danger} name="alert-circle-outline" size={24} />
         <Text style={styles.messageTitle}>Requests unavailable</Text>
@@ -73,7 +74,7 @@ export default function RequestsScreen() {
       </View> : <View style={styles.messageCard}>
         <Ionicons color={colors.muted} name="document-text-outline" size={27} />
         <Text style={styles.messageTitle}>No requests yet</Text>
-        <Text style={styles.messageText}>Material Requests and Expense Claims raised from Delivery Trips will appear here.</Text>
+        <Text style={styles.messageText}>{tripName ? 'Material Requests and Expense Claims raised from this Delivery Trip will appear here.' : 'Material Requests and Expense Claims raised from Delivery Trips will appear here.'}</Text>
       </View>}
     </ScrollView>
     <RequestDetailsDialog

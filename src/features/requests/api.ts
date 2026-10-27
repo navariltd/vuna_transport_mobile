@@ -19,10 +19,10 @@ export async function getMobileRequestSetup(tripName: string): Promise<MobileReq
   );
 }
 
-export async function getMobileRequestHistory(): Promise<MobileRequestHistoryItem[]> {
+export async function getMobileRequestHistory(tripName?: string): Promise<MobileRequestHistoryItem[]> {
   const result = await callMobileMethod(
     'vuna_transport.api.get_mobile_request_history',
-    { ...(await requestArgs()), limit: 100 },
+    { ...(await requestArgs()), limit: 100, trip_name: tripName },
     'Could not load your requests.',
     45000,
   );

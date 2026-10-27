@@ -2,8 +2,9 @@ import { getMobileRequestDetails, getMobileRequestHistory } from '../features/re
 import type { MobileRequestDetail, MobileRequestHistoryItem } from '../features/requests/types';
 import { readThroughCache } from './read_through';
 
-export function loadMobileRequestHistory() {
-  return readThroughCache<MobileRequestHistoryItem[]>('mobile-requests', 'history', getMobileRequestHistory);
+export function loadMobileRequestHistory(tripName?: string) {
+  const key = tripName ? `history:${tripName}` : 'history';
+  return readThroughCache<MobileRequestHistoryItem[]>('mobile-requests', key, () => getMobileRequestHistory(tripName));
 }
 
 export function loadMobileRequestDetails(
