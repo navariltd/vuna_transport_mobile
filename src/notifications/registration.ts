@@ -3,6 +3,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { callMobileMethod } from '../auth/session';
 import { getOnboardingRecord } from '../storage/onboarding';
+import { REMOTE_PUSH_NOTIFICATIONS_ENABLED } from './config';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -16,6 +17,7 @@ Notifications.setNotificationHandler({
 let registeredToken: string | null = null;
 
 export async function registerPushNotifications() {
+  if (!REMOTE_PUSH_NOTIFICATIONS_ENABLED) return false;
   if (!Device.isDevice || Platform.OS === 'web') return false;
 
   if (Platform.OS === 'android') {

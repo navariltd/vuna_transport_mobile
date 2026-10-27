@@ -3,9 +3,11 @@ import * as Notifications from 'expo-notifications';
 import { useEffect } from 'react';
 import { MobileTabBar } from '../../shared/mobile_tab_bar';
 import { registerPushNotifications } from '../../notifications/registration';
+import { REMOTE_PUSH_NOTIFICATIONS_ENABLED } from '../../notifications/config';
 
 export default function MobileTabsLayout() {
   useEffect(() => {
+    if (!REMOTE_PUSH_NOTIFICATIONS_ENABLED) return undefined;
     void registerPushNotifications().catch(() => undefined);
     const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const route = response.notification.request.content.data?.route;
