@@ -83,6 +83,11 @@ if [[ ! -d "${mobile_dir}/node_modules" ]]; then
 	exit 1
 fi
 
+if [[ ! -x "${android_dir}/gradlew" ]]; then
+	echo "Android project is missing; generating it with Expo..."
+	(cd "${mobile_dir}" && npx expo prebuild --platform android)
+fi
+
 export JAVA_HOME="${java_home}"
 export ANDROID_HOME="${android_home}"
 export ANDROID_SDK_ROOT="${android_home}"
