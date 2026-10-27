@@ -47,6 +47,7 @@
           "cameraPermission": "Allow Vuna Transport to scan setup QR codes."
         }
       ],
+      "expo-notifications",
       "expo-sqlite"
     ],
     "ios": {
