@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useEffect, useRef } from 'react';
 import { ScreenHeader, StateView } from '../trips/components';
 import { colors, radius, spacing } from '../../shared/theme';
@@ -8,36 +8,52 @@ import { colors, radius, spacing } from '../../shared/theme';
 export function RequestScreen({
   children,
   error,
+  keyboardScrollOffset = 0,
   loading,
   title,
 }: {
   children: ReactNode;
   error?: string;
+  keyboardScrollOffset?: number;
   loading?: boolean;
   title: string;
 }) {
   const scrollRef = useRef<ScrollView>(null);
+  const scrollYRef = useRef(0);
 
   useEffect(() => {
     if (error) requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: true }));
   }, [error]);
 
+  useEffect(() => {
+    if (!keyboardScrollOffset) return;
+    const subscription = Keyboard.addListener('keyboardDidShow', () => {
+      requestAnimationFrame(() => scrollRef.current?.scrollTo({
+        y: scrollYRef.current + keyboardScrollOffset,
+        animated: true,
+      }));
+    });
+    return () => subscription.remove();
+  }, [keyboardScrollOffset]);
+
   if (loading) return <View style={styles.screen}><StateView loading /></View>;
 
-  return <View style={styles.screen}>
+  return <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.screen}>
     <ScrollView
       automaticallyAdjustKeyboardInsets
       contentContainerStyle={styles.content}
       keyboardDismissMode="on-drag"
       keyboardShouldPersistTaps="handled"
       nestedScrollEnabled
+      onScroll={(event) => { scrollYRef.current = event.nativeEvent.contentOffset.y; }}
       ref={scrollRef}
+      scrollEventThrottle={16}
     >
       <ScreenHeader back title={title} />
       {error ? <TaskErrorBanner message={error} /> : null}
       {children}
     </ScrollView>
-  </View>;
+  </KeyboardAvoidingView>;
 }
 
 export function TaskErrorBanner({ message, title = 'Action could not be completed' }: { message: string; title?: string }) {

@@ -174,7 +174,7 @@ export default function ProofOfDeliveryScreen() {
   if (!pod) return null;
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.screen}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.screen}>
       <StatusBar style="dark" />
       <Modal animationType="fade" onRequestClose={() => undefined} statusBarTranslucent transparent visible={submitting}>
         <View style={styles.submissionOverlay}>
@@ -185,7 +185,7 @@ export default function ProofOfDeliveryScreen() {
           </View>
         </View>
       </Modal>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" ref={contentRef}>
+      <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" ref={contentRef}>
         <ScreenHeader back title="Proof of Delivery" />
         {error ? <TaskErrorBanner message={error} title="Could not complete delivery" /> : null}
         {queuedStatus ? <View style={styles.queuedNotice}><Ionicons color={colors.warning} name="save-outline" size={18} /><View style={styles.queuedNoticeCopy}><Text style={styles.queuedNoticeTitle}>Saved on this device</Text><Text style={styles.queuedNoticeMessage}>Status: {queuedStatus}. Review the details and submit again when ready.</Text></View></View> : null}
@@ -221,15 +221,15 @@ export default function ProofOfDeliveryScreen() {
           </Pressable>
         </Section>
         <Section title="Remarks"><TextInput multiline onChangeText={(value: string) => setPod({ ...pod, remarks: value })} placeholder="Add delivery notes or observations" placeholderTextColor={colors.faint} style={styles.textArea} value={pod.remarks || ''} /></Section>
+        <Pressable disabled={submitting} onPress={submit} style={[styles.submit, submitting && styles.disabled]}>{submitting ? <ActivityIndicator color={colors.surface} /> : <><Text style={styles.submitText}>Confirm and complete stop</Text><Ionicons color={colors.surface} name="checkmark" size={21} /></>}</Pressable>
       </ScrollView>
-      <View style={styles.footer}><Pressable disabled={submitting} onPress={submit} style={[styles.submit, submitting && styles.disabled]}>{submitting ? <ActivityIndicator color={colors.surface} /> : <><Text style={styles.submitText}>Confirm and complete stop</Text><Ionicons color={colors.surface} name="checkmark" size={21} /></>}</Pressable></View>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { backgroundColor: colors.background, flex: 1 },
-  content: { padding: spacing.xl, paddingBottom: 130, paddingTop: 58 },
+  content: { padding: spacing.xl, paddingBottom: 48, paddingTop: 58 },
   customer: { color: colors.ink, fontFamily: 'Inter_700Bold', fontSize: 24, marginTop: spacing.xl },
   reference: { color: colors.muted, fontFamily: 'Inter_500Medium', fontSize: 13, marginTop: 6 },
   outcomeRow: { flexDirection: 'row', gap: 10, marginTop: spacing.lg },
@@ -262,8 +262,7 @@ const styles = StyleSheet.create({
   photo: { height: '100%', width: '100%' },
   photoText: { color: colors.ink, fontFamily: 'Inter_600SemiBold', fontSize: 13, marginTop: 10 },
   textArea: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, color: colors.ink, fontFamily: 'Inter_400Regular', fontSize: 14, minHeight: 120, padding: 14, textAlignVertical: 'top' },
-  footer: { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1, bottom: 0, left: 0, padding: 16, paddingBottom: 28, position: 'absolute', right: 0 },
-  submit: { alignItems: 'center', backgroundColor: colors.ink, borderRadius: radius.sm, flexDirection: 'row', gap: 10, justifyContent: 'center', minHeight: 54 },
+  submit: { alignItems: 'center', backgroundColor: colors.ink, borderRadius: radius.sm, flexDirection: 'row', gap: 10, justifyContent: 'center', marginTop: spacing.xl, minHeight: 54 },
   submitText: { color: colors.surface, fontFamily: 'Inter_600SemiBold', fontSize: 15 },
   disabled: { opacity: 0.6 },
   submissionOverlay: { alignItems: 'center', backgroundColor: 'rgba(9, 9, 11, 0.42)', flex: 1, justifyContent: 'center', padding: spacing.xl },
