@@ -86,7 +86,6 @@ export default function DeliveryTripScreen() {
         {actionError ? <TaskErrorBanner message={actionError} title="Could not start the trip" /> : null}
 
         <View style={styles.sectionHeading}>
-          <Text style={styles.sectionTitle}>Delivery stops</Text>
           <View style={styles.headerActions}>
             {trip.actions?.can_report_incident ? <Pressable onPress={() => router.push(`/trips/${encodeURIComponent(trip.name)}/incidents` as never)} style={styles.incidentButton}>
               <Ionicons color={colors.danger} name="warning-outline" size={17} />
@@ -143,8 +142,7 @@ const styles = StyleSheet.create({
   tripName: { color: colors.ink, flex: 1, fontFamily: 'Inter_700Bold', fontSize: 17 },
   vehicle: { color: colors.muted, fontFamily: 'Inter_600SemiBold', fontSize: 13, marginTop: 8 },
   departure: { color: colors.muted, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 5 },
-  sectionHeading: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14, marginTop: spacing.xl },
-  sectionTitle: { color: colors.ink, fontFamily: 'Inter_700Bold', fontSize: 18 },
+  sectionHeading: { alignItems: 'center', flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 14, marginTop: spacing.xl },
   primaryAction: { alignItems: 'center', backgroundColor: colors.ink, borderRadius: 10, flexDirection: 'row', gap: 9, justifyContent: 'center', marginTop: spacing.xl, minHeight: 52 },
   primaryActionText: { color: colors.surface, fontFamily: 'Inter_600SemiBold', fontSize: 15 },
   actionDisabled: { opacity: 0.55 },
