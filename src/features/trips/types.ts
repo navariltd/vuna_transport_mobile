@@ -22,6 +22,8 @@ export type MobileContact = {
 };
 
 export type DeliveryStop = {
+  location_label?: string;
+  tasks?: { name: string; task_type: string; operation_label?: string; status: string; can_record_proof?: boolean }[];
   name: string;
   idx: number;
   customer?: string;

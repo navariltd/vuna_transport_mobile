@@ -93,7 +93,7 @@ export function DeliveryStopCard({
       </View>
       <View style={styles.stopBody}>
         <View style={styles.stopHeading}>
-          <Text numberOfLines={1} style={styles.stopCustomer}>{stop.customer || 'Customer'}</Text>
+          <Text numberOfLines={1} style={styles.stopCustomer}>{stop.customer || stop.location_label || 'Depot delivery'}</Text>
           <StatusBadge status={stop.delivery_status} />
         </View>
         <Text style={styles.stopAddress}>{address || 'Delivery address unavailable'}</Text>

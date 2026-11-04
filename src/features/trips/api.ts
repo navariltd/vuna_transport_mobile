@@ -11,6 +11,23 @@ async function deviceArgs() {
   };
 }
 
+export type TransferProofItem = {
+  source_row: string; item_code: string; batch_no?: string; qty: number;
+  planned_qty: number; uom: string; serial_no?: string;
+  rejected_qty?: number; rejected_serial_no?: string; rejection_reason_remarks?: string;
+  depot_received_rejected_qty?: number; depot_received_rejected_serial_no?: string;
+  rejected_goods_handling?: string;
+};
+export type TransferProof = { name?: string; docstatus: number; task: string; task_type: string; items: TransferProofItem[] };
+export async function prepareTransferProof(taskName: string): Promise<TransferProof> {
+  return callMobileMethod('vuna_transport.api.prepare_mobile_transport_proof',
+    { ...(await deviceArgs()), task_name: taskName }, 'Could not load transfer confirmation.');
+}
+export async function submitTransferProof(taskName: string, payload: Record<string, unknown>): Promise<{ name: string; outcome: string }> {
+  return callMobileMethod('vuna_transport.api.submit_mobile_transport_proof',
+    { ...(await deviceArgs()), task_name: taskName, payload }, 'Could not submit transfer confirmation.');
+}
+
 export async function getTripDetails(tripName: string): Promise<{ trip: DeliveryTrip }> {
   return callMobileMethod(
     'vuna_transport.api.get_mobile_delivery_trip_details',

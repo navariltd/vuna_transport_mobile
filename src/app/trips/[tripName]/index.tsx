@@ -105,7 +105,7 @@ export default function DeliveryTripScreen() {
           <DeliveryStopCard
             current={stop.name === currentStop}
             key={stop.name}
-            onPress={() => router.push(`/trips/${encodeURIComponent(trip.name)}/stops/${encodeURIComponent(stop.name)}` as never)}
+            onPress={() => router.push(`/trips/${encodeURIComponent(trip.name)}/${stop.tasks?.some((operation) => operation.task_type !== 'Customer Delivery') ? 'transfers' : 'stops'}/${encodeURIComponent(stop.name)}` as never)}
             stop={stop}
           />
         ))}
