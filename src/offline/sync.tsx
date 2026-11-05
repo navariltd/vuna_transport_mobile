@@ -18,6 +18,10 @@ export type OfflineTransportPODPayload = {
   stopName: string;
   taskName: string;
   proof: Record<string, unknown>;
+  signatureSvg?: string | null;
+  photoUri?: string | null;
+  photoFilename?: string | null;
+  serverPodName?: string | null;
 };
 
 export type OfflinePODPayload = {
@@ -32,6 +36,7 @@ export type OfflinePODPayload = {
 
 const listeners = new Set<() => void>();
 let syncPromise: Promise<void> | null = null;
+const activeOperations = new Map<string, ReturnType<typeof synchronizeOperation>>();
 
 export function requestOfflineSync() {
   for (const listener of listeners) listener();
@@ -61,6 +66,15 @@ export async function synchronizePendingOperations() {
 }
 
 export async function synchronizeOfflineOperation(operationId: string) {
+  const running = activeOperations.get(operationId);
+  if (running) return running;
+  const pending = loadAndSynchronizeOperation(operationId);
+  activeOperations.set(operationId, pending);
+  try { return await pending; }
+  finally { if (activeOperations.get(operationId) === pending) activeOperations.delete(operationId); }
+}
+
+async function loadAndSynchronizeOperation(operationId: string) {
   const operation = await getOfflineOperation(operationId);
   if (!operation) throw new Error('The saved offline operation could not be found.');
   return synchronizeOperation(operation);
@@ -70,7 +84,7 @@ async function runSynchronization() {
   const operations = await getPendingOfflineOperations();
   for (const operation of operations) {
     try {
-      await synchronizeOperation(operation);
+      await synchronizeOfflineOperation(operation.operationId);
     } catch (error) {
       if (isConnectivityFailure(error)) break;
     }
@@ -102,16 +116,39 @@ async function synchronizeOperation(operation: OfflineOperation) {
 }
 
 async function synchronizeTransportPOD(operation: OfflineOperation<OfflineTransportPODPayload>) {
-  const payload = operation.payload;
+  let payload = operation.payload;
   const cached = await getCachedValue<{ trip: DeliveryTrip }>('delivery-trip', payload.tripName);
   let trip = cached?.value.trip || (await getTripDetails(payload.tripName)).trip;
+  if (payload.signatureSvg || payload.photoUri) {
+    // Only persist a draft when uploading evidence, never merely by viewing a
+    // stop. Retrying a submitted proof must not attempt another file upload.
+    const prepared = await prepareTransferProof(payload.taskName, true);
+    if (!prepared.name || prepared.task !== payload.taskName) throw new Error('The evidence draft does not match this task.');
+    if (prepared.docstatus === 0) {
+      payload = { ...payload, serverPodName: prepared.name };
+      await updateOfflineOperation(operation.operationId, { payload });
+      if (payload.signatureSvg) await uploadPODAttachment(payload.tripName, payload.stopName, prepared.name, 'signature', payload.signatureSvg, `signature-${prepared.name}.svg`, 'text');
+      if (payload.photoUri && payload.photoFilename) await uploadPODAttachment(payload.tripName, payload.stopName, prepared.name, 'delivery_photo', await readPODPhotoBase64(payload.photoUri), payload.photoFilename);
+    }
+  }
   const result = await submitTransferProof(payload.taskName, payload.proof);
   await updateOfflineOperation(operation.operationId, { status: 'Completed', lastError: null });
+  try { removePODPhoto(payload.photoUri); } catch { /* Local cleanup must not reopen a posted handover. */ }
   // Posting has succeeded. A failed refresh must never turn it into another
   // handover or cause a new request ID to be generated.
   try {
     const cachedProof = await getCachedValue<TransferProof>('transport-proof', payload.taskName);
-    if (cachedProof) await setCachedValue('transport-proof', payload.taskName, { ...cachedProof.value, name: result.name, docstatus: 1 });
+    if (cachedProof) {
+      const submitted = payload.proof.items as Record<string, unknown>[];
+      await setCachedValue('transport-proof', payload.taskName, {
+        ...cachedProof.value, name: result.name, docstatus: 1, outcome: result.outcome,
+        received_by: payload.proof.received_by, receiver_phone: payload.proof.receiver_phone, remarks: payload.proof.remarks,
+        items: cachedProof.value.items.map((row) => {
+          const actual = submitted.find((item) => item.source_row === row.source_row && (item.batch_no || '') === (row.batch_no || ''));
+          return actual ? { ...row, ...actual, qty: actual.delivered_qty } : row;
+        }),
+      });
+    }
     trip = (await getTripDetails(payload.tripName)).trip;
     await cacheSynchronizedTrip(trip);
     const confirmed = await prepareTransferProof(payload.taskName);

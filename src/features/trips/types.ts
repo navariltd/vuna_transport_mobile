@@ -22,10 +22,12 @@ export type MobileContact = {
 };
 
 export type DeliveryStop = {
+  vuna_depot_names?: string;
+  vuna_stop_type?: 'Customer' | 'Depot' | 'Mixed';
   unplanned_pickups_enabled?: boolean;
   unplanned_collection_count?: number;
   location_label?: string;
-  tasks?: { name: string; task_type: string; operation_label?: string; status: string; can_record_proof?: boolean }[];
+  tasks?: TransportTask[];
   name: string;
   idx: number;
   customer?: string;
@@ -52,6 +54,22 @@ export type DeliveryStop = {
     docstatus: number;
     delivery_datetime?: string;
   };
+};
+
+export type TransportTask = {
+  name: string;
+  task_type: string;
+  operation_label?: string;
+  status: string;
+  can_record_proof?: boolean;
+  blocked_reason?: string;
+  reference_doctype?: string;
+  reference_name?: string;
+  party_name?: string;
+  delivery_note?: string;
+  return_request?: string;
+  dispatch_stock_entry?: string;
+  items?: { item_code: string; item_name?: string; qty: number; uom: string }[];
 };
 
 export type DeliveryTrip = {
