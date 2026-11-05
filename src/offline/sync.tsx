@@ -1,7 +1,7 @@
 import { type PropsWithChildren, useEffect, useState } from 'react';
 import { isConnectivityFailure } from '../auth/session';
-import { prepareProofOfDelivery, submitProofOfDelivery, uploadPODAttachment } from '../features/trips/api';
-import type { ProofOfDeliveryDraft } from '../features/trips/types';
+import { getTripDetails, prepareProofOfDelivery, prepareTransferProof, submitProofOfDelivery, submitTransferProof, uploadPODAttachment, type TransferProof } from '../features/trips/api';
+import type { DeliveryTrip, ProofOfDeliveryDraft } from '../features/trips/types';
 import { useConnectivity } from './connectivity';
 import { readPODPhotoBase64, removePODPhoto } from './files';
 import {
@@ -11,6 +11,14 @@ import {
   updateOfflineOperation,
 } from './outbox';
 import { cacheSynchronizedTrip } from './trip_repository';
+import { getCachedValue, setCachedValue } from './cache';
+
+export type OfflineTransportPODPayload = {
+  tripName: string;
+  stopName: string;
+  taskName: string;
+  proof: Record<string, unknown>;
+};
 
 export type OfflinePODPayload = {
   tripName: string;
@@ -79,6 +87,9 @@ async function synchronizeOperation(operation: OfflineOperation) {
     if (operation.operationType === 'submit_pod') {
       return await synchronizePOD(operation as OfflineOperation<OfflinePODPayload>);
     }
+    if (operation.operationType === 'submit_transport_pod') {
+      return await synchronizeTransportPOD(operation as OfflineOperation<OfflineTransportPODPayload>);
+    }
     throw new Error(`Unsupported offline operation: ${operation.operationType}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Synchronization failed.';
@@ -88,6 +99,25 @@ async function synchronizeOperation(operation: OfflineOperation) {
     });
     throw error;
   }
+}
+
+async function synchronizeTransportPOD(operation: OfflineOperation<OfflineTransportPODPayload>) {
+  const payload = operation.payload;
+  const cached = await getCachedValue<{ trip: DeliveryTrip }>('delivery-trip', payload.tripName);
+  let trip = cached?.value.trip || (await getTripDetails(payload.tripName)).trip;
+  const result = await submitTransferProof(payload.taskName, payload.proof);
+  await updateOfflineOperation(operation.operationId, { status: 'Completed', lastError: null });
+  // Posting has succeeded. A failed refresh must never turn it into another
+  // handover or cause a new request ID to be generated.
+  try {
+    const cachedProof = await getCachedValue<TransferProof>('transport-proof', payload.taskName);
+    if (cachedProof) await setCachedValue('transport-proof', payload.taskName, { ...cachedProof.value, name: result.name, docstatus: 1 });
+    trip = (await getTripDetails(payload.tripName)).trip;
+    await cacheSynchronizedTrip(trip);
+    const confirmed = await prepareTransferProof(payload.taskName);
+    await setCachedValue('transport-proof', payload.taskName, confirmed);
+  } catch { /* The submitted proof will be refreshed on the next online visit. */ }
+  return { ...result, trip };
 }
 
 async function synchronizePOD(operation: OfflineOperation<OfflinePODPayload>) {

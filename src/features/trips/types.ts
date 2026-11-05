@@ -22,6 +22,8 @@ export type MobileContact = {
 };
 
 export type DeliveryStop = {
+  unplanned_pickups_enabled?: boolean;
+  unplanned_collection_count?: number;
   location_label?: string;
   tasks?: { name: string; task_type: string; operation_label?: string; status: string; can_record_proof?: boolean }[];
   name: string;

@@ -152,7 +152,7 @@ function OperationCard({ operation, busy, onRetry }: { operation: OfflineOperati
   const payload = operation.payload as Partial<OfflinePODPayload>;
   const reviewable = operation.operationType === 'submit_pod' && payload.tripName && payload.stopName && operation.status !== 'Completed';
   const retryable = ['Pending', 'Failed', 'Needs Attention'].includes(operation.status);
-  const title = operation.operationType === 'submit_pod' ? 'Proof of Delivery' : operation.operationType;
+  const title = operation.operationType === 'submit_pod' ? 'Proof of Delivery' : operation.operationType === 'submit_transport_pod' ? 'Pickup / transfer handover' : operation.operationType;
   const reference = payload.pod?.delivery_note || operation.entityKey;
 
   return <View style={styles.operationCard}>

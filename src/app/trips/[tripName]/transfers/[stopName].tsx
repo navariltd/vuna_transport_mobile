@@ -4,7 +4,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenHeader, Section, StateView, StatusBadge } from '../../../../features/trips/components';
 import { TaskErrorBanner } from '../../../../features/requests/components';
-import { prepareTransferProof, submitTransferProof, type TransferProof } from '../../../../features/trips/api';
+import { type TransferProof } from '../../../../features/trips/api';
+import { isConnectivityFailure } from '../../../../auth/session';
+import { enqueueOfflineOperation } from '../../../../offline/outbox';
+import { requestOfflineSync, synchronizeOfflineOperation, type OfflineTransportPODPayload } from '../../../../offline/sync';
+import { loadTransportProof, pendingTransportProof } from '../../../../offline/transport_proof_repository';
 import type { DeliveryStop } from '../../../../features/trips/types';
 import { loadTripDetails } from '../../../../offline/trip_repository';
 import { colors, spacing } from '../../../../shared/theme';
@@ -34,14 +38,19 @@ export default function TransferStopScreen() {
       const selected = result.data.trip.stops.find((row) => row.name === stopName);
       if (!selected) throw new Error('This stop is no longer part of the trip.');
       setStop(selected);
+      void Promise.allSettled((selected.tasks || []).filter((task) => task.can_record_proof && task.task_type !== 'Customer Delivery').map((task) => loadTransportProof(task.name)));
     } catch (exception) { setError(exception instanceof Error ? exception.message : 'Could not load this delivery.'); }
     finally { setLoading(false); }
   }, [tripName, stopName]);
   useEffect(() => { void load(); }, [load]);
   const openProof = async (taskName: string) => {
-    setBusy(true); setError(''); setNotice('');
+    setBusy(true); setError(''); setNotice(''); setProof(undefined);
     try {
-      const result = await prepareTransferProof(taskName);
+      if (await pendingTransportProof(taskName)) {
+        setNotice('This handover is saved on this device. Open Sync Center to check or retry it; do not collect it again.');
+        return;
+      }
+      const { data: result } = await loadTransportProof(taskName);
       setProof(result); setQuantities(result.items.map((row) => String(row.qty)));
       setSerials(result.items.map((row) => row.serial_no || ''));
       setRejectedQuantities(result.items.map((row) => String(row.rejected_qty || 0)));
@@ -73,7 +82,7 @@ export default function TransferStopScreen() {
     }
     setBusy(true); setError('');
     try {
-      const result = await submitTransferProof(proof.task, {
+      const payload = {
         request_id: requestId, received_by: confirmedBy.trim(), remarks: remarks.trim(),
         items: proof.items.map((row, index) => ({ source_row: row.source_row, batch_no: row.batch_no,
           delivered_qty: Number(quantities[index]), serial_no: serials[index],
@@ -82,30 +91,44 @@ export default function TransferStopScreen() {
           depot_received_rejected_qty: depotQuantity(index),
           depot_received_rejected_serial_no: depotRejectedSerials[index],
           rejection_reason_remarks: reasons[index].trim() || remarks.trim() })),
+      };
+      const queued = await pendingTransportProof(proof.task);
+      const operationId = queued?.operationId || await enqueueOfflineOperation<OfflineTransportPODPayload>('submit_transport_pod', proof.task, {
+        tripName, stopName, taskName: proof.task, proof: payload,
       });
-      setNotice(`${result.name} recorded. Received quantities have been posted; rejected goods are tracked in the Return Request.`);
+      const result = await synchronizeOfflineOperation(operationId);
+      if (!('name' in result)) throw new Error('Unexpected handover synchronization result.');
+      setNotice(proof.task_type === 'Return Pickup' ? proof.return_context === 'Customer' ? `${result.name} recorded. Customer returns are with the driver; warehouse staff will process the Sales Return.` : `${result.name} recorded. Collected goods are now in vehicle transit; warehouse staff must confirm receiving.` : `${result.name} recorded. Received quantities have been posted; rejected goods are tracked in the Return Request.`);
       setProof(undefined); await load();
-    } catch (exception) { setError(exception instanceof Error ? exception.message : 'Could not submit confirmation. Retry with the same details.'); }
+    } catch (exception) {
+      if (isConnectivityFailure(exception)) {
+        setNotice('Handover saved on this device. It will synchronize when online; stock is not posted until the server confirms it.');
+        setProof(undefined);
+        requestOfflineSync();
+      } else { setError(exception instanceof Error ? exception.message : 'Could not submit confirmation.'); setNotice('If this handover was saved, review it in Sync Center before trying again.'); }
+    }
     finally { setBusy(false); }
   };
   if (loading) return <StateView loading />;
   return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <ScreenHeader back title={stop?.location_label || 'Depot delivery'} />
+      {stop && (stop.unplanned_pickups_enabled || Boolean(stop.unplanned_collection_count)) ? <Pressable style={styles.button} onPress={() => router.push(`/trips/${encodeURIComponent(tripName)}/collections/${encodeURIComponent(stopName)}` as never)}><Text style={styles.buttonText}>{stop.unplanned_pickups_enabled ? 'Unplanned collections' : 'Collection history'}</Text></Pressable> : null}
       {error ? <TaskErrorBanner message={error} title="Check this handover" /> : null}
       {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+      {notice ? <Pressable style={styles.button} onPress={() => router.push('/sync-center')}><Text style={styles.buttonText}>Sync Center</Text></Pressable> : null}
       {stop?.delivery_note ? <Pressable style={styles.button} onPress={() => router.push(`/trips/${encodeURIComponent(tripName)}/stops/${encodeURIComponent(stopName)}` as never)}><Text style={styles.buttonText}>Customer delivery</Text></Pressable> : null}
       {(stop?.tasks || []).filter((row) => row.task_type !== 'Customer Delivery').map((operation) => <Section key={operation.name} title={operation.operation_label || 'Depot delivery'}>
         <StatusBadge status={operation.status} />
         <Pressable disabled={busy} style={styles.button} onPress={() => void openProof(operation.name)}><Text style={styles.buttonText}>{operation.can_record_proof ? 'Confirm handover' : 'View confirmation'}</Text></Pressable>
       </Section>)}
-      {proof ? <Section title={proof.task_type === 'Transfer Dispatch' ? 'Loading POD' : 'Proof of delivery'}>
+      {proof ? <Section title={proof.task_type === 'Return Pickup' ? 'Proof of pickup' : proof.task_type === 'Transfer Dispatch' ? 'Loading POD' : 'Proof of delivery'}>
         {proof.items.map((row, index) => <View key={`${row.source_row}:${row.batch_no || ''}`} style={styles.item}>
           <Text style={styles.label}>{row.item_code}{row.batch_no ? ` · ${row.batch_no}` : ''}</Text>
-          <Text>Dispatched: {row.planned_qty} {row.uom}</Text>
-          <Text style={styles.label}>Accepted quantity</Text>
+          <Text>{proof.task_type === 'Return Pickup' ? 'Planned collection' : 'Dispatched'}: {row.planned_qty} {row.uom}</Text>
+          <Text style={styles.label}>{proof.task_type === 'Return Pickup' ? 'Quantity collected' : 'Accepted quantity'}</Text>
           <TextInput style={styles.input} accessibilityLabel={`Actual quantity for ${row.item_code}`} keyboardType="decimal-pad" editable={proof.docstatus === 0 && proof.task_type !== 'Transfer Dispatch'} value={quantities[index]} onChangeText={(value) => setQuantities((current) => current.map((qty, position) => position === index ? value : qty))} />
-          {proof.task_type !== 'Transfer Dispatch' ? <>
+          {proof.task_type === 'Transfer Receipt' ? <>
             <Text style={styles.label}>Rejected quantity</Text>
             <TextInput style={styles.input} accessibilityLabel={`Rejected quantity for ${row.item_code}`} keyboardType="decimal-pad" editable={proof.docstatus === 0} value={rejectedQuantities[index]} onChangeText={(value) => setRejectedQuantities((current) => current.map((qty, position) => position === index ? value : qty))} />
             <Text style={styles.hint}>Unaccounted: {Math.max(row.planned_qty - Number(quantities[index] || 0) - Number(rejectedQuantities[index] || 0), 0)} {row.uom}. Only explicit rejection creates a Return Request.</Text>
@@ -125,10 +148,10 @@ export default function TransferStopScreen() {
           {row.serial_no ? <TextInput multiline style={styles.input} accessibilityLabel="Actual serial numbers" editable={proof.docstatus === 0 && proof.task_type !== 'Transfer Dispatch'} value={serials[index]} onChangeText={(value) => setSerials((current) => current.map((serial, position) => position === index ? value : serial))} /> : null}
         </View>)}
         {proof.docstatus === 0 ? <>
-          <Text style={styles.label}>Confirmed by</Text><TextInput style={styles.input} value={confirmedBy} onChangeText={setConfirmedBy} autoCapitalize="words" />
+          <Text style={styles.label}>{proof.task_type === 'Return Pickup' ? 'Released by' : 'Confirmed by'}</Text><TextInput style={styles.input} value={confirmedBy} onChangeText={setConfirmedBy} autoCapitalize="words" />
           <Text style={styles.label}>Remarks</Text><TextInput style={styles.input} value={remarks} onChangeText={setRemarks} multiline />
-          <Text style={styles.hint}>An internet connection is required. Submission posts accepted stock and any rejected stock received by the depot. Rejected stock retained on the vehicle stays in transit.</Text>
-          <Pressable disabled={busy} style={styles.button} onPress={() => void submit()}><Text style={styles.buttonText}>{busy ? 'Submitting…' : 'Submit confirmation'}</Text></Pressable>
+          <Text style={styles.hint}>Offline handovers are saved on this device and posted only after server synchronization. {proof.task_type === 'Return Pickup' ? proof.return_context === 'Customer' ? 'Customer collection is evidence only, not inventory receipt or credit.' : 'Only collected goods enter vehicle transit; uncollected goods stay at the depot.' : 'Rejected goods left on the vehicle remain in transit.'}</Text>
+          <Pressable disabled={busy} style={styles.button} onPress={() => void submit()}><Text style={styles.buttonText}>{busy ? 'Submitting…' : proof.task_type === 'Return Pickup' ? 'Submit pickup' : 'Submit confirmation'}</Text></Pressable>
         </> : <Text style={styles.notice}>{proof.name} has already been submitted.</Text>}
       </Section> : null}
     </ScrollView>

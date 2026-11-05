@@ -62,6 +62,9 @@ export default function DeliveryNoteScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={colors.ink} />}
       >
         <ScreenHeader back title="Delivery Note" />
+        {stop.unplanned_pickups_enabled || Boolean(stop.unplanned_collection_count) ? <Pressable onPress={() => router.push(`/trips/${encodeURIComponent(tripName)}/collections/${encodeURIComponent(stopName)}` as never)} style={styles.outlineButton}>
+          <Ionicons color={colors.ink} name="cube-outline" size={19} /><Text style={styles.outlineText}>{stop.unplanned_pickups_enabled ? 'Unplanned collections' : 'Collection history'}</Text>
+        </Pressable> : null}
         <View style={styles.map}><TripMap activeStop={stop.name} height={240} stops={[stop]} /></View>
         <View style={styles.titleRow}>
           <View style={styles.titleCopy}><Text style={styles.noteName}>{note.name}</Text><Text style={styles.customer}>{note.customer_name || note.customer}</Text></View>

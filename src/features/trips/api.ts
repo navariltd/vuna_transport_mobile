@@ -11,6 +11,21 @@ async function deviceArgs() {
   };
 }
 
+export type CollectionItemOption = { key: string; reference_row: string; row_idx: number; name: string; item_name: string; stock_uom: string; uom: string; qty: number; uoms: string[]; batch_no?: string; serial_no?: string; has_batch_no: number; has_serial_no: number };
+export type CollectionRecord = { name: string; collection_location: string; collection_review_status: string; return_request?: string };
+export async function getUnplannedCollections(tripName: string, stopName: string): Promise<CollectionRecord[]> {
+  return callMobileMethod('vuna_transport.api.get_mobile_unplanned_collections', { ...(await deviceArgs()), trip_name: tripName, stop_name: stopName }, 'Could not load collections.');
+}
+export async function getCollectionSetup(tripName: string, stopName: string): Promise<{ enabled: boolean; reference_types: string[] }> {
+  return callMobileMethod('vuna_transport.api.get_mobile_collection_setup', { ...(await deviceArgs()), trip_name: tripName, stop_name: stopName }, 'Could not identify the stop source.');
+}
+export async function searchCollectionItems(tripName: string, stopName: string, referenceType: string, referenceName: string): Promise<CollectionItemOption[]> {
+  return callMobileMethod('vuna_transport.api.search_mobile_collection_items', { ...(await deviceArgs()), trip_name: tripName, stop_name: stopName, reference_doctype: referenceType, reference_name: referenceName }, 'Could not load items from this document.');
+}
+export async function reportUnplannedCollection(tripName: string, payload: Record<string, unknown>): Promise<{ name: string; created: boolean }> {
+  return callMobileMethod('vuna_transport.api.report_mobile_unplanned_collection', { ...(await deviceArgs()), trip_name: tripName, payload }, 'Could not record collection.');
+}
+
 export type TransferProofItem = {
   source_row: string; item_code: string; batch_no?: string; qty: number;
   planned_qty: number; uom: string; serial_no?: string;
@@ -18,7 +33,7 @@ export type TransferProofItem = {
   depot_received_rejected_qty?: number; depot_received_rejected_serial_no?: string;
   rejected_goods_handling?: string;
 };
-export type TransferProof = { name?: string; docstatus: number; task: string; task_type: string; items: TransferProofItem[] };
+export type TransferProof = { name?: string; docstatus: number; task: string; task_type: string; return_request?: string; return_context?: string; items: TransferProofItem[] };
 export async function prepareTransferProof(taskName: string): Promise<TransferProof> {
   return callMobileMethod('vuna_transport.api.prepare_mobile_transport_proof',
     { ...(await deviceArgs()), task_name: taskName }, 'Could not load transfer confirmation.');
