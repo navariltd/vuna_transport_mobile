@@ -7,6 +7,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ScreenHeader, Section, StateView, StatusBadge, formatAddress, formatDateTime } from '../../../../../features/trips/components';
 import { TripMap } from '../../../../../features/trips/trip_map';
+import { nextStopAction, stopActions, stopActionPath, taskTitle } from '../../../../../features/trips/task_model';
 import type { DeliveryNoteDetails } from '../../../../../features/trips/types';
 import { loadDeliveryNoteDetails } from '../../../../../offline/trip_repository';
 import { colors, radius, spacing } from '../../../../../shared/theme';
@@ -43,8 +44,10 @@ export default function DeliveryNoteScreen() {
   const address = formatAddress(stop);
   const awaitingSync = stop.delivery_status === 'Awaiting Sync'
     || stop.proof_of_delivery?.status === 'Awaiting Sync';
-  const completed = !awaitingSync && Boolean(stop.visited || stop.proof_of_delivery?.docstatus === 1);
+  const completed = !awaitingSync && Boolean(submittedPod || stop.proof_of_delivery?.docstatus === 1);
   const deliveryRecorded = awaitingSync || completed;
+  const currentAction = stopActions(stop).find((task) => task.task_type === 'Customer Delivery');
+  const nextAction = nextStopAction(stop, currentAction?.name || '');
   const canCompleteDelivery = Boolean(
     stop.can_complete_delivery
     || (details.trip.actual_start && !details.trip.actual_completion && !deliveryRecorded),
@@ -109,6 +112,7 @@ export default function DeliveryNoteScreen() {
       {!deliveryRecorded ? <View style={styles.footer}>
         {canCompleteDelivery ? <Pressable onPress={() => router.push(`/trips/${encodeURIComponent(tripName)}/stops/${encodeURIComponent(stopName)}/pod` as never)} style={styles.primary}><Text style={styles.primaryText}>Complete delivery</Text><Ionicons color={colors.surface} name="arrow-forward" size={20} /></Pressable> : null}
       </View> : null}
+      {deliveryRecorded && nextAction ? <View style={styles.footer}><Pressable style={styles.primary} onPress={() => router.replace(stopActionPath(tripName, stopName, nextAction) as never)}><Text style={styles.primaryText}>Next task · {taskTitle(nextAction)}</Text><Ionicons name="arrow-forward" size={20} color={colors.surface} /></Pressable></View> : null}
     </View>
   );
 }
