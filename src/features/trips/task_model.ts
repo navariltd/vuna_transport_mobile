@@ -3,8 +3,8 @@ import type { DeliveryStop, TransportTask } from './types';
 export type StopAction = TransportTask & { queued?: boolean };
 const finished = new Set(['Completed', 'Completed with Variance', 'Failed', 'Cancelled']);
 export const taskFinished = (task: Pick<TransportTask, 'status'>) => finished.has(task.status);
-export const taskTitle = (task: Pick<TransportTask, 'task_type'>) => task.task_type === 'Return Pickup' ? 'Collect returns' : task.task_type === 'Customer Delivery' ? 'Customer delivery' : 'Depot delivery';
-export const taskActionLabel = (task: Pick<TransportTask, 'task_type'>) => task.task_type === 'Return Pickup' ? 'Confirm pickup' : 'Complete delivery';
+export const taskTitle = (task: Pick<TransportTask, 'task_type'>) => task.task_type === 'Return Pickup' ? 'Collect returns' : task.task_type === 'Supplier Pickup' ? 'Supplier collection' : task.task_type === 'Customer Delivery' ? 'Customer delivery' : 'Depot delivery';
+export const taskActionLabel = (task: Pick<TransportTask, 'task_type'>) => ['Return Pickup', 'Supplier Pickup'].includes(task.task_type) ? 'Confirm collection' : 'Complete delivery';
 
 export function stopActions(stop: DeliveryStop, pending: Record<string, string> = {}): StopAction[] {
   const tasks = (stop.tasks || []).filter((task) => task.task_type !== 'Transfer Dispatch' && task.status !== 'Cancelled');
