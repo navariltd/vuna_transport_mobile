@@ -1,7 +1,22 @@
 import * as SecureStore from 'expo-secure-store';
 
 const SESSION_KEY = 'vuna_transport_mobile_session';
+const PENDING_SESSION_KEY = 'vuna_transport_mobile_pending_session';
 const DEFAULT_REQUEST_TIMEOUT = 45000;
+type SessionInterruption = 'expired' | 'device';
+const sessionListeners = new Set<(reason: SessionInterruption) => void>();
+
+export function subscribeToSessionInterruption(listener: (reason: SessionInterruption) => void) {
+  sessionListeners.add(listener);
+  return () => { sessionListeners.delete(listener); };
+}
+
+export class MobileAccessError extends Error {
+  constructor(public reason: SessionInterruption, message: string) {
+    super(message);
+    this.name = 'MobileAccessError';
+  }
+}
 
 type ServerPayload = Record<string, any>;
 type MobileRequestFailure = 'network' | 'timeout' | 'response';
@@ -32,7 +47,53 @@ export async function getSession() {
 }
 
 export async function clearSession() {
+  await Promise.all([SecureStore.deleteItemAsync(SESSION_KEY), SecureStore.deleteItemAsync(PENDING_SESSION_KEY)]);
+}
+
+export async function getPendingSession(): Promise<MobileSession | null> {
+  const value = await SecureStore.getItemAsync(PENDING_SESSION_KEY);
+  return value ? JSON.parse(value) : null;
+}
+
+async function interruptSession(session: MobileSession, reason: SessionInterruption) {
+  const current = await getSession();
+  const pending = await getPendingSession();
+  // A late response from an older login must not sign out a newer session.
+  const matches = (candidate: MobileSession | null) => candidate?.sid === session.sid && candidate.siteUrl === session.siteUrl;
+  if (!matches(current) && !matches(pending)) return;
+  if (reason === 'device') await SecureStore.setItemAsync(PENDING_SESSION_KEY, JSON.stringify(session));
+  else await SecureStore.deleteItemAsync(PENDING_SESSION_KEY);
   await SecureStore.deleteItemAsync(SESSION_KEY);
+  for (const listener of sessionListeners) listener(reason);
+}
+
+async function authenticatedRequest(session: MobileSession, method: string, args: Record<string, unknown>, fallback: string, timeoutMs = DEFAULT_REQUEST_TIMEOUT) {
+  const { response, payload } = await requestJson(`${session.siteUrl}/api/method/${method}`, {
+    body: JSON.stringify(args),
+    headers: { 'Content-Type': 'application/json', Cookie: `sid=${session.sid}` },
+    method: 'POST',
+  }, timeoutMs);
+  if (response.status === 401 || payload.session_expired || ['AuthenticationError', 'SessionExpired'].includes(payload.exc_type)) {
+    await interruptSession(session, 'expired');
+    throw new MobileAccessError('expired', 'Your session has expired. Please sign in again. Your saved work is still on this device.');
+  }
+  if (!response.ok || payload.exc) throw new MobileRequestError(getServerMessage(payload, fallback), 'response');
+  return payload.message;
+}
+
+export async function refreshDeviceRegistration(device: Record<string, unknown>) {
+  const session = await getPendingSession();
+  if (!session) throw new MobileAccessError('expired', 'Please sign in again to check device access.');
+  const result = await authenticatedRequest(session, 'vuna_transport.api.bootstrap_mobile_device', device, 'Could not check device access.');
+  if (result?.allowed) {
+    const pending = await getPendingSession();
+    if (pending?.sid !== session.sid || pending.siteUrl !== session.siteUrl) {
+      throw new MobileAccessError('expired', 'Your sign-in changed. Please sign in again.');
+    }
+    await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(session));
+    await SecureStore.deleteItemAsync(PENDING_SESSION_KEY);
+  }
+  return result;
 }
 
 export async function getDriverProfile(installationId: string, deviceIdentifier?: string | null) {
@@ -63,19 +124,17 @@ export async function callMobileMethod(
 	timeoutMs = DEFAULT_REQUEST_TIMEOUT,
 ) {
   const session = await getSession();
-  if (!session) throw new Error('Your mobile session has expired. Please sign in again.');
-
-	const { response, payload } = await requestJson(
-		`${session.siteUrl}/api/method/${method}`,
-		{
-			body: JSON.stringify(args),
-			headers: { 'Content-Type': 'application/json', Cookie: `sid=${session.sid}` },
-			method: 'POST',
-		},
-		timeoutMs,
-	);
-	if (!response.ok || payload.exc) throw new MobileRequestError(getServerMessage(payload, fallback), 'response');
-	return payload.message;
+  if (!session) {
+    const reason = await getPendingSession() ? 'device' : 'expired';
+    for (const listener of sessionListeners) listener(reason);
+    throw new MobileAccessError(reason, reason === 'device' ? 'Please check device access again.' : 'Your session has expired. Please sign in again.');
+  }
+  const result = await authenticatedRequest(session, method, args, fallback, timeoutMs);
+  if (['DEVICE_NOT_REGISTERED', 'DEVICE_NOT_ACTIVE', 'MULTIPLE_ACTIVE_DEVICES'].includes(result?.code)) {
+    await interruptSession(session, 'device');
+    throw new MobileAccessError('device', result.message || 'This device is not currently authorized.');
+  }
+  return result;
 }
 
 export async function loginAndRegisterDevice(siteUrl: string, username: string, password: string, device: Record<string, unknown>) {
@@ -104,10 +163,14 @@ export async function loginAndRegisterDevice(siteUrl: string, username: string, 
   if (!bootstrapResponse.ok || bootstrapPayload.exc) throw new Error(getServerMessage(bootstrapPayload, 'Device registration failed.'));
 
   const result = bootstrapPayload.message;
-  if (!result?.allowed) return { allowed: false, message: result?.message || 'This device is not allowed.' };
-
   const session = { siteUrl, sid, user: username };
+  if (!result?.allowed) {
+    await SecureStore.deleteItemAsync(SESSION_KEY);
+    await SecureStore.setItemAsync(PENDING_SESSION_KEY, JSON.stringify(session));
+    return { allowed: false, message: result?.message || 'This device is not allowed.' };
+  }
   await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(session));
+  await SecureStore.deleteItemAsync(PENDING_SESSION_KEY);
   return { allowed: true, message: null };
 }
 
@@ -141,8 +204,9 @@ async function parseResponse(response: Response): Promise<ServerPayload> {
   try {
     return JSON.parse(body);
   } catch {
-    if (response.status === 401 || response.status === 403) {
-      throw new MobileRequestError('Your session has expired or you no longer have access. Please sign in again.', 'response');
+    if (response.status === 401) return {};
+    if (response.status === 403) {
+      throw new MobileRequestError('You do not have permission to perform this action.', 'response');
     }
     if (response.status >= 500) {
       throw new MobileRequestError('The server is temporarily unavailable. Please try again shortly.', 'response');
@@ -155,8 +219,8 @@ function getServerMessage(payload: ServerPayload, fallback: string) {
   if (typeof payload.message === 'string' && payload.message) return payload.message;
   if (typeof payload._server_messages === 'string') {
     try {
-      const messages = JSON.parse(payload._server_messages) as { message?: string }[];
-      const message = messages.map((item) => item.message).filter(Boolean).join(' ');
+      const messages = JSON.parse(payload._server_messages) as (string | { message?: string })[];
+      const message = messages.map((item) => (typeof item === 'string' ? JSON.parse(item) : item).message).filter(Boolean).join(' ');
       if (message) return message;
     } catch {
       // Keep the fallback when Frappe's server messages are not JSON.

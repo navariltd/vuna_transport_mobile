@@ -5,7 +5,7 @@ import { PODForm } from './pod_form';
 import { applyCustomerForm, customerForm, type PODFormSubmission } from './form_model';
 import { ScreenHeader, StateView } from '../trips/components';
 import type { ProofOfDeliveryDraft } from '../trips/types';
-import { isConnectivityFailure } from '../../auth/session';
+import { isConnectivityFailure, MobileAccessError } from '../../auth/session';
 import { enqueueOfflineOperation, getActiveOfflineOperation, getOfflineOperation, updateOfflineOperation, type OfflineOperationStatus } from '../../offline/outbox';
 import { requestOfflineSync, synchronizeOfflineOperation, type OfflinePODPayload } from '../../offline/sync';
 import { cachePendingProofOfDelivery, loadProofOfDeliveryDraft } from '../../offline/trip_repository';
@@ -54,6 +54,7 @@ export default function CustomerConfirmationScreen() {
         router.replace(`/trips/${encodeURIComponent(tripName)}${focus}` as never);
       }
     } catch (exception) {
+      if (exception instanceof MobileAccessError) { setStatus('Pending'); throw exception; }
       if (!isConnectivityFailure(exception)) { setStatus('Needs Attention'); throw exception; }
       setStatus('Failed'); requestOfflineSync();
       Alert.alert('Saved for synchronization', 'This proof is saved on the device. Completion will be confirmed after synchronization.', [{ text: 'Continue', onPress: () => router.replace(`/trips/${encodeURIComponent(tripName)}` as never) }]);

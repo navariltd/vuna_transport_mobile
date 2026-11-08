@@ -1,8 +1,14 @@
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
+import { useEffect } from 'react';
+import { subscribeToSessionInterruption } from '../auth/session';
 import { ConnectivityProvider } from '../offline/connectivity';
 import { OfflineSyncProvider } from '../offline/sync';
 
 export default function RootLayout() {
+  useEffect(() => subscribeToSessionInterruption((reason) => {
+    if (router.canDismiss()) router.dismissAll();
+    router.replace({ pathname: '/login', params: { reason } });
+  }), []);
   return (
     <ConnectivityProvider>
       <OfflineSyncProvider>
