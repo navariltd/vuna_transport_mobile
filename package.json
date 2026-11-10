@@ -7,6 +7,7 @@
     "@expo/vector-icons": "^15.0.2",
     "@maplibre/maplibre-react-native": "^11.5.0",
     "@react-native-community/netinfo": "12.0.1",
+    "@vuna-transport/updater": "file:modules/transport-updater",
     "expo": "~57.0.26",
     "expo-application": "~57.0.3",
     "expo-camera": "~57.0.6",
@@ -31,6 +32,7 @@
     "@types/react": "~19.2.2",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.2",
+    "semantic-release": "^25.0.9",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -38,7 +40,9 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test scripts/*.test.cjs scripts/__tests__/*.test.mjs"
   },
   "private": true
 }

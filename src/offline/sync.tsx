@@ -1,5 +1,6 @@
 import { type PropsWithChildren, useEffect, useState } from 'react';
-import { isConnectivityFailure } from '../auth/session';
+import { isConnectivityFailure, MobileAccessError } from '../auth/session';
+import { getOfflineDatabase } from './database';
 import { getTripDetails, prepareProofOfDelivery, prepareTransferProof, submitProofOfDelivery, submitTransferProof, uploadPODAttachment, type TransferProof } from '../features/trips/api';
 import type { DeliveryTrip, ProofOfDeliveryDraft } from '../features/trips/types';
 import { useConnectivity } from './connectivity';
@@ -11,7 +12,7 @@ import {
   updateOfflineOperation,
 } from './outbox';
 import { cacheSynchronizedTrip } from './trip_repository';
-import { getCachedValue, setCachedValue } from './cache';
+import { getCachedValue, getOfflineScope, setCachedValue } from './cache';
 
 export type OfflineTransportPODPayload = {
   tripName: string;
@@ -86,12 +87,14 @@ async function runSynchronization() {
     try {
       await synchronizeOfflineOperation(operation.operationId);
     } catch (error) {
-      if (isConnectivityFailure(error)) break;
+      if (isConnectivityFailure(error) || error instanceof MobileAccessError) break;
     }
   }
 }
 
 async function synchronizeOperation(operation: OfflineOperation) {
+  const scope = await getOfflineScope();
+  if (!scope) throw new MobileAccessError('expired', 'Please sign in again to sync saved work.');
   await updateOfflineOperation(operation.operationId, {
     status: 'Syncing',
     lastError: null,
@@ -107,6 +110,16 @@ async function synchronizeOperation(operation: OfflineOperation) {
     throw new Error(`Unsupported offline operation: ${operation.operationType}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Synchronization failed.';
+    if (error instanceof MobileAccessError) {
+      // Authentication may already have cleared the active session. Use only
+      // the captured owner scope to pause this operation without losing it.
+      const database = await getOfflineDatabase();
+      await database.runAsync(
+        "UPDATE offline_outbox SET status = 'Pending', last_error = ?, updated_at = ? WHERE scope = ? AND operation_id = ? AND status = 'Syncing'",
+        message, new Date().toISOString(), scope, operation.operationId,
+      );
+      throw error;
+    }
     await updateOfflineOperation(operation.operationId, {
       status: isConnectivityFailure(error) ? 'Failed' : 'Needs Attention',
       lastError: message,

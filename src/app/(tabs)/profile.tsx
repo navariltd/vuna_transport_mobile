@@ -8,6 +8,7 @@ import { clearCurrentOfflineCache } from '../../offline/cache';
 import { ConnectivityBadge } from '../../offline/components';
 import { loadDriverProfile, type MobileDriverProfile } from '../../offline/profile_repository';
 import { getOnboardingRecord } from '../../storage/onboarding';
+import { AppUpdateCard } from '../../features/appUpdates/AppUpdateCard';
 
 type Driver = NonNullable<MobileDriverProfile['driver']>;
 
@@ -64,6 +65,7 @@ export default function ProfileScreen() {
           {driver.expiry_date ? <InfoRow label="Licence expiry" value={driver.expiry_date} /> : null}
         </View>
       </> : <><Text style={styles.title}>Profile unavailable.</Text><Text style={styles.subtitle}>{message}</Text></>}
+      <AppUpdateCard />
       <Pressable onPress={logout} style={styles.logout}><Text style={styles.logoutText}>Log out</Text></Pressable>
     </ScrollView>
   </View>;

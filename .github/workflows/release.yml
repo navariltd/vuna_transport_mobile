@@ -1,0 +1,188 @@
+name: Android semantic release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing stable release tag to rebuild (for example v1.0.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+concurrency:
+  group: android-production-release
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+
+  semantic-release:
+    if: github.event_name == 'push'
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      published: ${{ steps.release.outputs.published }}
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Publish semantic GitHub release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/semantic-release.mjs
+
+  android:
+    needs: [checks, semantic-release]
+    if: >-
+      always() && !cancelled() && needs.checks.result == 'success' &&
+      github.ref == 'refs/heads/main' &&
+      (needs.semantic-release.outputs.published == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    env:
+      RELEASE_TAG: ${{ needs.semantic-release.outputs.tag || inputs.tag }}
+      FRAPPE_URL: ${{ vars.FRAPPE_URL || secrets.FRAPPE_URL }}
+      FRAPPE_API_KEY: ${{ secrets.FRAPPE_API_KEY }}
+      FRAPPE_API_SECRET: ${{ secrets.FRAPPE_API_SECRET }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.semantic-release.outputs.tag || inputs.tag }}
+          fetch-depth: 0
+      - name: Require stable release from main history
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git fetch origin main --tags
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
+          git merge-base --is-ancestor HEAD origin/main
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-provider: basic
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+      - run: npm ci
+      - name: Validate version and update server
+        id: version
+        run: |
+          node scripts/release-version.mjs "$RELEASE_TAG"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const configured = readFileSync('src/config/updateConfig.ts', 'utf8').match(/serverUrl:[\s\S]*?'(https:\/\/[^']+)'/)[1];
+          if (process.env.FRAPPE_URL?.replace(/\/$/, '') !== configured) throw new Error('FRAPPE_URL must match the update server compiled into the app.');
+          NODE
+      - name: Restore protected signing key
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          test -n "$ANDROID_KEY_ALIAS"
+          test -n "$ANDROID_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_KEY_PASSWORD"
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/transport-release.jks"
+          test -s "$RUNNER_TEMP/transport-release.jks"
+          echo "VUNA_TRANSPORT_RELEASE_STORE_FILE=$RUNNER_TEMP/transport-release.jks" >> "$GITHUB_ENV"
+          echo "VUNA_TRANSPORT_RELEASE_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "VUNA_TRANSPORT_RELEASE_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "VUNA_TRANSPORT_RELEASE_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
+      - name: Build signed ARM64 release
+        env:
+          CI: '1'
+          VUNA_TRANSPORT_VERSION_NAME: ${{ steps.version.outputs.name }}
+          VUNA_TRANSPORT_VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: ./scripts/build-release-apk.sh
+      - name: Verify package, version, architecture and signature
+        id: apk
+        env:
+          EXPECTED_PACKAGE: ${{ steps.version.outputs.application_id }}
+          EXPECTED_NAME: ${{ steps.version.outputs.name }}
+          EXPECTED_CODE: ${{ steps.version.outputs.code }}
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          TOOLS="$(find "${ANDROID_HOME:?}/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          BADGING="$("$TOOLS/aapt" dump badging "$APK")"
+          PACKAGE_ID="$(printf '%s\n' "$BADGING" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
+          VERSION_CODE="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")"
+          VERSION_NAME="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")"
+          test "$PACKAGE_ID" = "$EXPECTED_PACKAGE"
+          test "$VERSION_CODE" = "$EXPECTED_CODE"
+          test "$VERSION_NAME" = "$EXPECTED_NAME"
+          ABIS="$(unzip -Z1 "$APK" 'lib/*/*.so' | sed -n 's#^lib/\([^/]*\)/.*#\1#p' | sort -u)"
+          test "$ABIS" = arm64-v8a
+          CERTS="$("$TOOLS/apksigner" verify --verbose --print-certs "$APK")"
+          if printf '%s' "$CERTS" | grep -qi 'CN=Android Debug'; then exit 1; fi
+          ACTUAL_CERT="$(printf '%s\n' "$CERTS" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          KEY_CERT="$(keytool -list -v -keystore "$VUNA_TRANSPORT_RELEASE_STORE_FILE" -storepass:env VUNA_TRANSPORT_RELEASE_STORE_PASSWORD -alias "$VUNA_TRANSPORT_RELEASE_KEY_ALIAS" | sed -n 's/.*SHA256: //p' | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          test -n "$ACTUAL_CERT"
+          test "$ACTUAL_CERT" = "$KEY_CERT"
+          cp "$APK" "vuna-transport-$RELEASE_TAG-arm64.apk"
+          echo "path=vuna-transport-$RELEASE_TAG-arm64.apk" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "$APK" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "size=$(wc -c < "$APK" | tr -d ' ')" >> "$GITHUB_OUTPUT"
+      - name: Read semantic release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release view "$RELEASE_TAG" --json body --jq .body > "$RUNNER_TEMP/release-notes.txt"
+      - name: Upload draft for publisher review
+        env:
+          APK: ${{ steps.apk.outputs.path }}
+          PACKAGE_ID: ${{ steps.version.outputs.application_id }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          APK_SHA256: ${{ steps.apk.outputs.sha256 }}
+          APK_SIZE: ${{ steps.apk.outputs.size }}
+        run: |
+          node scripts/publish-android-release.mjs \
+            --apk "$APK" --application-id "$PACKAGE_ID" \
+            --version-name "$VERSION_NAME" --version-code "$VERSION_CODE" \
+            --release-channel Production --release-notes "$(< "$RUNNER_TEMP/release-notes.txt")" \
+            --git-commit-sha "$(git rev-parse HEAD)" \
+            --github-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --expected-sha256 "$APK_SHA256" --expected-file-size "$APK_SIZE" | tee upload-result.json
+          echo '### Draft uploaded to Mobile Release Manager' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Review and publish the draft in Mobile Release Manager to offer this update to users.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.apk.outcome == 'success'
+        with:
+          name: vuna-transport-${{ env.RELEASE_TAG }}-arm64
+          path: |
+            vuna-transport-*.apk
+            upload-result.json
+          retention-days: 30
+      - name: Remove temporary signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/transport-release.jks"

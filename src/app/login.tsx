@@ -1,13 +1,15 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, useFonts } from '@expo-google-fonts/inter';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { loginAndRegisterDevice } from '../auth/session';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { clearSession, getPendingSession, loginAndRegisterDevice, MobileAccessError, refreshDeviceRegistration } from '../auth/session';
+import { requestOfflineSync } from '../offline/sync';
 import { getOnboardingRecord } from '../storage/onboarding';
 
 export default function LoginScreen() {
+  const { reason } = useLocalSearchParams<{ reason?: string }>();
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
   const [siteUrl, setSiteUrl] = useState('');
   const [device, setDevice] = useState<Record<string, unknown>>({});
@@ -17,6 +19,35 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
   const [blocked, setBlocked] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (reason === 'expired') {
+      setBlocked(false);
+      setError('Your session has expired. Please sign in again. Your saved work is still on this device.');
+    }
+    void getPendingSession().then((pending) => {
+      if (pending) {
+        setBlocked(true);
+        setUsername(pending.user);
+        setError('Ask your administrator to activate this device, then check access again.');
+      }
+    }).catch(() => setError('Could not restore device access. Please sign in again.'));
+  }, [reason]);
+
+  const openWork = () => { requestOfflineSync(); router.replace('/dashboard'); };
+
+  const checkAccess = async () => {
+    if (loading || !device.installation_id) return;
+    setLoading(true);
+    try {
+      const result = await refreshDeviceRegistration(device);
+      if (result?.allowed) openWork();
+      else setError(result?.message || 'This device is still awaiting approval.');
+    } catch (exception) {
+      if (exception instanceof MobileAccessError && exception.reason === 'expired') setBlocked(false);
+      setError(exception instanceof Error ? exception.message : 'Could not check device access.');
+    } finally { setLoading(false); }
+  };
 
   useEffect(() => {
     getOnboardingRecord().then((record) => {
@@ -39,8 +70,9 @@ export default function LoginScreen() {
     setLoading(true); setError(''); setBlocked(false);
     try {
       const result = await loginAndRegisterDevice(siteUrl, username.trim(), password, device);
+      setPassword('');
       if (!result.allowed) { setBlocked(true); setError(result.message || 'Contact your administrator.'); return; }
-      router.replace('/dashboard');
+      openWork();
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : 'Sign in failed.');
     } finally { setLoading(false); }
@@ -52,13 +84,15 @@ export default function LoginScreen() {
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.screen}>
       <StatusBar style="dark" />
       <ScrollView
+        alwaysBounceVertical
         contentContainerStyle={styles.content}
+        refreshControl={blocked ? <RefreshControl refreshing={loading} onRefresh={() => { void checkAccess(); }} tintColor="#111111" /> : undefined}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.kicker}>VUNA TRANSPORT</Text>
         <Text style={styles.title}>{blocked ? 'Device access needs attention.' : 'Sign in to continue.'}</Text>
-        <Text style={styles.subtitle}>{blocked ? 'This device is not currently authorized for this user.' : `Connect to ${siteUrl || 'your transport site'}.`}</Text>
+        {blocked ? <Text style={styles.subtitle}>This device is not currently authorized. For a new phone, ask your administrator to activate it in Transport Mobile Device. This replaces the previous active phone.</Text> : null}
         {!blocked ? <>
           <TextInput autoCapitalize="none" autoCorrect={false} onChangeText={setUsername} placeholder="Email or username" placeholderTextColor="#999999" style={styles.input} value={username} />
           <View style={styles.passwordField}>
@@ -83,8 +117,13 @@ export default function LoginScreen() {
             </Pressable>
           </View>
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Pressable disabled={loading} onPress={signIn} style={styles.button}>{loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>Sign in</Text>}</Pressable>
-        </> : <Text style={styles.error}>{error}</Text>}
+          <Pressable disabled={loading || !device.installation_id} onPress={signIn} style={styles.button}>{loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>Sign in</Text>}</Pressable>
+        </> : <>
+          <Text style={styles.error}>{error}</Text>
+          <Pressable disabled={loading || !device.installation_id} onPress={() => { void checkAccess(); }} style={styles.button}>{loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>Check access again</Text>}</Pressable>
+          <Pressable disabled={loading} onPress={async () => { await clearSession(); setBlocked(false); setPassword(''); setError(''); }} style={styles.secondaryButton}><Text style={styles.secondaryText}>Sign in with another account</Text></Pressable>
+          <Text style={styles.subtitle}>Sync saved work on your old phone before switching. Unsynced work stays on that phone.</Text>
+        </>}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -103,4 +142,6 @@ const styles = StyleSheet.create({
   error: { color: '#A32929', fontFamily: 'Inter_500Medium', fontSize: 14, lineHeight: 20, marginTop: 18 },
   button: { alignItems: 'center', backgroundColor: '#111111', borderRadius: 9, justifyContent: 'center', marginTop: 28, minHeight: 52 },
   buttonText: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 15 },
+  secondaryButton: { alignItems: 'center', padding: 16 },
+  secondaryText: { color: '#111111', fontFamily: 'Inter_500Medium', fontSize: 14 },
 });

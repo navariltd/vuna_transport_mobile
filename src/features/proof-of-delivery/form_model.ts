@@ -6,6 +6,7 @@ export type PODFormItem = {
   planned: number; accepted: string; rejected: string; recordMissing?: boolean;
   reason?: string; reasonNotes?: string; serials?: string; availableSerials?: string;
   rejectedSerials?: string; custody?: string; depotRejected?: string; depotSerials?: string;
+  captureBatch?: boolean; captureSerials?: boolean;
 };
 export type PODFormDraft = {
   mode: 'customer' | 'depot' | 'pickup'; party: string; reference: string;
@@ -51,17 +52,17 @@ export function applyCustomerForm(pod: ProofOfDeliveryDraft, draft: PODFormDraft
   }) };
 }
 export function transportForm(proof: TransferProof, party: string): PODFormDraft {
-  const mode = proof.task_type === 'Return Pickup' ? 'pickup' : 'depot';
+  const mode = ['Return Pickup', 'Supplier Pickup'].includes(proof.task_type) ? 'pickup' : 'depot';
   return { mode, party, reference: proof.reference_name || proof.return_request || '', receivedBy: proof.received_by || '', phone: proof.receiver_phone || '', remarks: proof.remarks || '', rejectionReasons: proof.rejection_reasons || [],
     items: proof.items.map((item, index) => ({ id: String(index), itemCode: item.item_code, itemName: item.item_name, batch: item.batch_no, uom: item.uom, planned: item.planned_qty, accepted: String(item.qty), rejected: String(item.rejected_qty || 0), recordMissing: mode === 'depot' && item.qty + (item.rejected_qty || 0) < item.planned_qty,
-      reason: item.rejection_reason, reasonNotes: item.rejection_reason_remarks, serials: item.serial_no, availableSerials: item.serial_no || item.rejected_serial_no,
+      captureBatch: Boolean(proof.capture_identity && item.has_batch_no), captureSerials: Boolean(proof.capture_identity && item.has_serial_no), reason: item.rejection_reason, reasonNotes: item.rejection_reason_remarks, serials: item.serial_no, availableSerials: item.serial_no || item.rejected_serial_no,
       rejectedSerials: item.rejected_serial_no, custody: item.rejected_goods_handling || 'All remain on vehicle', depotRejected: String(item.depot_received_rejected_qty || 0), depotSerials: item.depot_received_rejected_serial_no })) };
 }
 export function transportPayload(proof: TransferProof, draft: PODFormDraft, requestId: string) {
   return { request_id: requestId, received_by: draft.receivedBy.trim(), receiver_phone: draft.phone.trim(), remarks: draft.remarks.trim(), items: proof.items.map((row, index) => {
     const item = draft.items[index];
     const rejected = rejectedQuantity(item, draft.mode);
-    return { source_row: row.source_row, batch_no: row.batch_no, delivered_qty: Number(item.accepted), serial_no: item.serials,
+    return { source_row: row.source_row, batch_no: proof.capture_identity ? item.batch : row.batch_no, delivered_qty: Number(item.accepted), serial_no: item.serials,
       rejected_qty: rejected, rejected_serial_no: rejected ? item.rejectedSerials : '', rejected_goods_handling: item.custody,
       depot_received_rejected_qty: depotRejectedQuantity(item, rejected), depot_received_rejected_serial_no: rejected ? item.depotSerials : '',
       rejection_reason: item.reason, rejection_reason_remarks: item.reasonNotes?.trim() || draft.remarks.trim() };

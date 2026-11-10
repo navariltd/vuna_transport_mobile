@@ -27,13 +27,14 @@ export async function reportUnplannedCollection(tripName: string, payload: Recor
 }
 
 export type TransferProofItem = {
+  has_batch_no?: boolean; has_serial_no?: boolean;
   source_row: string; item_code: string; item_name?: string; batch_no?: string; qty: number;
   planned_qty: number; uom: string; serial_no?: string;
   rejected_qty?: number; rejected_serial_no?: string; rejection_reason?: string; rejection_reason_remarks?: string;
   depot_received_rejected_qty?: number; depot_received_rejected_serial_no?: string;
   rejected_goods_handling?: string;
 };
-export type TransferProof = { name?: string; docstatus: number; task: string; task_type: string; return_request?: string; return_context?: string; reference_doctype?: string; reference_name?: string; received_by?: string; receiver_phone?: string; signature?: string; delivery_photo?: string; rejection_reasons?: string[]; delivery_datetime?: string; remarks?: string; outcome?: string; status?: string; items: TransferProofItem[] };
+export type TransferProof = { name?: string; docstatus: number; task: string; task_type: string; capture_identity?: boolean; return_request?: string; return_context?: string; reference_doctype?: string; reference_name?: string; received_by?: string; receiver_phone?: string; signature?: string; delivery_photo?: string; rejection_reasons?: string[]; delivery_datetime?: string; remarks?: string; outcome?: string; status?: string; items: TransferProofItem[] };
 export async function prepareTransferProof(taskName: string, saveDraft = false): Promise<TransferProof> {
   return callMobileMethod('vuna_transport.api.prepare_mobile_transport_proof',
     { ...(await deviceArgs()), task_name: taskName, save_draft: saveDraft }, 'Could not load Proof of Delivery.');

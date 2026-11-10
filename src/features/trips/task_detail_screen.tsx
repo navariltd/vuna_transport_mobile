@@ -50,6 +50,7 @@ export default function TransportTaskScreen() {
   const next = nextStopAction(work.stop, taskName, work.pending);
   const canComplete = Boolean(task.can_record_proof && proof && proof.docstatus === 0 && !task.queued && !recorded && !task.blocked_reason);
   const actualProof = proof?.docstatus === 1;
+  const pickup = ['Return Pickup', 'Supplier Pickup'].includes(task.task_type);
   const items: TransferProof['items'] = proof?.items || (task.items || []).map((item) => ({ ...item, source_row: item.item_code, planned_qty: item.qty }));
   const reference = proof?.reference_name || task.reference_name || task.return_request || 'Document pending';
   const status = task.queued ? task.status : proof?.docstatus === 1 ? proof.outcome || 'Completed' : task.status;
@@ -69,11 +70,11 @@ export default function TransportTaskScreen() {
           </View>
           <View>
             <Text style={styles.quantity}>{actualProof ? item.qty : item.planned_qty} {item.uom}</Text>
-            <Text style={styles.muted}>{actualProof ? task.task_type === 'Return Pickup' ? 'Collected' : 'Accepted' : recorded ? 'Planned' : task.task_type === 'Return Pickup' ? 'To collect' : 'To deliver'}</Text>
+            <Text style={styles.muted}>{actualProof ? pickup ? 'Collected' : 'Accepted' : recorded ? 'Planned' : pickup ? 'To collect' : 'To deliver'}</Text>
           </View>
         </View>)}</View>
       </Section>
-      {recorded ? <View style={styles.success}><Text style={styles.cardTitle}>Handover recorded</Text><Text style={styles.muted}>{proof?.name || completed || 'Submitted confirmation'}</Text>{proof?.received_by ? <Text style={styles.body}>{task.task_type === 'Return Pickup' ? 'Released by' : 'Received by'}: {proof.received_by}</Text> : null}{proof?.delivery_datetime ? <Text style={styles.muted}>{formatDateTime(proof.delivery_datetime)}</Text> : null}{proof?.remarks ? <Text style={styles.body}>{proof.remarks}</Text> : null}</View> : null}
+      {recorded ? <View style={styles.success}><Text style={styles.cardTitle}>Handover recorded</Text><Text style={styles.muted}>{proof?.name || completed || 'Submitted confirmation'}</Text>{proof?.received_by ? <Text style={styles.body}>{pickup ? 'Released by' : 'Received by'}: {proof.received_by}</Text> : null}{proof?.delivery_datetime ? <Text style={styles.muted}>{formatDateTime(proof.delivery_datetime)}</Text> : null}{proof?.remarks ? <Text style={styles.body}>{proof.remarks}</Text> : null}</View> : null}
       {work.stop.unplanned_pickups_enabled || Boolean(work.stop.unplanned_collection_count) ? <Pressable style={[styles.outline, { marginTop: 24 }]} onPress={() => router.push(`/trips/${encodeURIComponent(tripName)}/collections/${encodeURIComponent(stopName)}` as never)}><Text style={styles.outlineText}>{work.stop.unplanned_pickups_enabled ? 'Unplanned collections' : 'Collection history'}</Text></Pressable> : null}
     </ScrollView>
     <View style={styles.footer}>

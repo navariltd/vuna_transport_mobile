@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { getSession } from '../auth/session';
+import { getSession, getPendingSession } from '../auth/session';
 import { getOnboardingRecord, saveOnboardingRecord } from '../storage/onboarding';
 
 const ink = '#111111';
@@ -24,11 +24,11 @@ export default function OnboardingScreen() {
     let active = true;
     const restoreSetup = async () => {
       try {
-        const [record, session] = await Promise.all([getOnboardingRecord(), getSession()]);
+        const [record, session, pending] = await Promise.all([getOnboardingRecord(), getSession(), getPendingSession()]);
         if (!active) return;
         if (record) {
           if (session?.siteUrl === record.siteUrl) router.replace('/dashboard');
-          else router.replace('/login');
+          else router.replace({ pathname: '/login', params: pending ? { reason: 'device' } : {} });
           return;
         }
         setCheckingSetup(false);

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
-# Build an ARM64 Android release APK for local device testing.
-# Configure a production signing key before publishing through an app store.
+# Build an ARM64 APK with the same signing identity used for app updates.
+# Set VUNA_TRANSPORT_RELEASE_STORE_FILE, VUNA_TRANSPORT_RELEASE_STORE_PASSWORD,
+# VUNA_TRANSPORT_RELEASE_KEY_ALIAS and VUNA_TRANSPORT_RELEASE_KEY_PASSWORD.
 
 set -euo pipefail
 
@@ -16,6 +17,27 @@ if [[ "${1:-}" == "--clean" ]]; then
 elif [[ $# -gt 0 ]]; then
 	echo "Usage: $(basename "$0") [--clean]" >&2
 	exit 2
+fi
+
+for signing_variable in VUNA_TRANSPORT_RELEASE_STORE_FILE VUNA_TRANSPORT_RELEASE_STORE_PASSWORD VUNA_TRANSPORT_RELEASE_KEY_ALIAS VUNA_TRANSPORT_RELEASE_KEY_PASSWORD; do
+	if [[ -z "${!signing_variable:-}" ]]; then
+		echo "Missing ${signing_variable}. Release builds require your production signing key." >&2
+		echo "For a debug-signed development build, use: npx expo run:android" >&2
+		exit 1
+	fi
+done
+if [[ ! -f "${VUNA_TRANSPORT_RELEASE_STORE_FILE}" ]]; then
+	echo "The release keystore does not exist: ${VUNA_TRANSPORT_RELEASE_STORE_FILE}" >&2
+	exit 1
+fi
+export VUNA_TRANSPORT_RELEASE_STORE_FILE="$(realpath "${VUNA_TRANSPORT_RELEASE_STORE_FILE}")"
+
+release_name="${VUNA_TRANSPORT_VERSION_NAME:-$(node -p "require('${mobile_dir}/app.json').expo.version")}"
+release_metadata="$(node "${script_dir}/release-version.mjs" "${release_name}")"
+release_code="$(printf '%s\n' "${release_metadata}" | sed -n 's/^code=//p')"
+if [[ -n "${VUNA_TRANSPORT_VERSION_CODE:-}" && "${VUNA_TRANSPORT_VERSION_CODE}" != "${release_code}" ]]; then
+	echo "VUNA_TRANSPORT_VERSION_CODE does not match semantic version ${release_name}." >&2
+	exit 1
 fi
 
 resolve_java_home() {
@@ -83,14 +105,15 @@ if [[ ! -d "${mobile_dir}/node_modules" ]]; then
 	exit 1
 fi
 
-if [[ ! -x "${android_dir}/gradlew" ]]; then
-	echo "Android project is missing; generating it with Expo..."
-	(cd "${mobile_dir}" && npx expo prebuild --platform android)
-fi
-
 export JAVA_HOME="${java_home}"
 export ANDROID_HOME="${android_home}"
 export ANDROID_SDK_ROOT="${android_home}"
+
+# Keep the package ID, plugins and permissions in sync with app.json, including
+# when reusing an existing generated Android project on a developer's machine.
+echo "Preparing Android project from the current Expo configuration..."
+(cd "${mobile_dir}" && npx expo prebuild --platform android --no-install)
+node "${script_dir}/prepare-android-release.mjs" "${android_dir}/app/build.gradle"
 
 cd "${android_dir}"
 
@@ -108,7 +131,10 @@ if [[ "${clean_build}" == true ]]; then
 		"${android_dir}/app/build"
 fi
 
-./gradlew :app:assembleRelease --no-daemon --console=plain -PreactNativeArchitectures=arm64-v8a
+./gradlew :app:assembleRelease --no-daemon --console=plain \
+	-PreactNativeArchitectures=arm64-v8a \
+	-PVUNA_TRANSPORT_VERSION_NAME="${release_name#v}" \
+	-PVUNA_TRANSPORT_VERSION_CODE="${release_code}"
 
 if [[ ! -f "${apk_path}" ]]; then
 	echo "Gradle completed without producing the expected APK: ${apk_path}" >&2

@@ -1,0 +1,6 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": ["ke.navari.transport.updater.TransportUpdaterModule"]
+  }
+}
