@@ -3,8 +3,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { StatusBadge, TripProgress, formatDateTime } from '../../features/trips/components';
+import { searchAssignedTrips } from '../../features/trips/trip_search';
 import type { DeliveryTrip } from '../../features/trips/types';
 import { SyncStatusPill } from '../../offline/components';
 import { loadAssignedTrips } from '../../offline/trip_repository';
@@ -16,6 +17,7 @@ export default function DashboardScreen() {
   const [driverName, setDriverName] = useState('');
   const [message, setMessage] = useState('Your assigned trips will appear here.');
   const [trips, setTrips] = useState<DeliveryTrip[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [showCompleted, setShowCompleted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -47,18 +49,17 @@ export default function DashboardScreen() {
     return () => clearInterval(refreshTimer);
   }, [loadProfile]));
 
-  const activeTrips = trips
-    .filter((trip) => !['Completed', 'Cancelled'].includes(trip.status))
-    .sort((left, right) => tripStatusPriority(left.status) - tripStatusPriority(right.status));
-  const completedTrips = trips
-    .filter((trip) => trip.status === 'Completed')
-    .sort((left, right) => (right.departure_time || '').localeCompare(left.departure_time || ''));
+  const { activeTrips, completedTrips, isSearching } = searchAssignedTrips(trips, searchQuery);
+  const resultCount = activeTrips.length + completedTrips.length;
+  const completedExpanded = isSearching || showCompleted;
 
   if (!fontsLoaded) return <ActivityIndicator color="#111111" style={styles.loading} />;
   return <View style={styles.screen}>
     <StatusBar style="dark" />
     <ScrollView
       contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       refreshControl={<RefreshControl colors={["#111111"]} onRefresh={() => { setRefreshing(true); void loadProfile(); }} refreshing={refreshing} tintColor="#111111" />}
     >
       <View style={styles.pageHeader}><Image source={require('../../../assets/icon.png')} style={styles.logo} /><Text style={styles.pageTitle}>Home</Text><SyncStatusPill /></View>
@@ -66,6 +67,37 @@ export default function DashboardScreen() {
       <Text style={styles.greeting}>{driverName ? `Good day, ${driverName}.` : 'Good day.'}</Text>
       <Text style={styles.subtitle}>{message}</Text>
       {trips.length ? <>
+        <View style={styles.searchBar}>
+          <Ionicons accessible={false} color={colors.muted} name="search-outline" size={20} />
+          <TextInput
+            accessibilityLabel="Search trips by trip number or vehicle registration"
+            autoCapitalize="none"
+            autoComplete="off"
+            autoCorrect={false}
+            onChangeText={setSearchQuery}
+            placeholder="Search trip or vehicle"
+            placeholderTextColor={colors.muted}
+            returnKeyType="search"
+            style={styles.searchInput}
+            value={searchQuery}
+          />
+          {searchQuery.length ? <Pressable
+            accessibilityLabel="Clear trip search"
+            accessibilityRole="button"
+            onPress={() => setSearchQuery('')}
+            style={styles.clearSearch}
+          >
+            <Ionicons accessible={false} color={colors.muted} name="close-circle" size={21} />
+          </Pressable> : null}
+        </View>
+        {isSearching ? <Text accessibilityLiveRegion="polite" style={styles.searchSummary}>
+          {resultCount} {resultCount === 1 ? 'trip' : 'trips'} found
+        </Text> : null}
+        {isSearching && !resultCount ? <View style={styles.emptyCard}>
+          <Text style={styles.emptyTitle}>No matching trips</Text>
+          <Text style={styles.emptyText}>Try a different trip number or vehicle registration.</Text>
+        </View> : <>
+        {activeTrips.length || !isSearching ? <>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Active deliveries</Text>
           <Text style={styles.sectionCount}>{activeTrips.length}</Text>
@@ -76,21 +108,23 @@ export default function DashboardScreen() {
             <Text style={styles.emptyTitle}>No active deliveries</Text>
             <Text style={styles.emptyText}>Your scheduled and in-progress trips will appear here.</Text>
           </View>}
+        </> : null}
         {completedTrips.length ? <View style={styles.completedSection}>
           <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ expanded: showCompleted }}
-            onPress={() => setShowCompleted((visible) => !visible)}
+            accessibilityRole={isSearching ? 'header' : 'button'}
+            accessibilityState={isSearching ? undefined : { expanded: completedExpanded }}
+            onPress={isSearching ? undefined : () => setShowCompleted((visible) => !visible)}
             style={styles.completedHeader}
           >
             <View style={styles.completedTitleRow}>
               <Text style={styles.completedTitle}>Completed deliveries</Text>
               <Text style={styles.sectionCount}>{completedTrips.length}</Text>
             </View>
-            <Ionicons color={colors.muted} name={showCompleted ? 'chevron-up' : 'chevron-down'} size={20} />
+            {!isSearching ? <Ionicons color={colors.muted} name={completedExpanded ? 'chevron-up' : 'chevron-down'} size={20} /> : null}
           </Pressable>
-          {showCompleted ? completedTrips.map((trip) => <TripCard key={trip.name} trip={trip} />) : null}
+          {completedExpanded ? completedTrips.map((trip) => <TripCard key={trip.name} trip={trip} />) : null}
         </View> : null}
+        </>}
       </> : <View style={styles.emptyCard}>
         <Text style={styles.emptyTitle}>No assigned trips yet</Text>
         <Text style={styles.emptyText}>When a Delivery Trip is assigned to you, its stops and delivery actions will be available here.</Text>
@@ -116,12 +150,6 @@ function DashboardSkeleton() {
       <View style={[styles.skeletonBlock, styles.skeletonProgress]} />
     </View>
   </View>;
-}
-
-function tripStatusPriority(status: string) {
-  if (status === 'In Transit') return 0;
-  if (status === 'Scheduled') return 1;
-  return 2;
 }
 
 function TripCard({ trip }: { trip: DeliveryTrip }) {
@@ -161,6 +189,10 @@ const styles = StyleSheet.create({
   skeletonProgress: { height: 6, marginTop: 22, width: '100%' },
   greeting: { color: '#111111', fontFamily: 'Inter_700Bold', fontSize: 32, lineHeight: 39, marginTop: 28 },
   subtitle: { color: '#6B6B6B', fontFamily: 'Inter_400Regular', fontSize: 16, lineHeight: 24, marginTop: 16 },
+  searchBar: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 12, borderWidth: 1, flexDirection: 'row', gap: 10, marginTop: 24, minHeight: 52, paddingLeft: 14, paddingRight: 4 },
+  searchInput: { color: colors.ink, flex: 1, fontFamily: 'Inter_400Regular', fontSize: 15, minWidth: 0, paddingVertical: 14 },
+  clearSearch: { alignItems: 'center', justifyContent: 'center', minHeight: 44, minWidth: 44 },
+  searchSummary: { color: colors.muted, fontFamily: 'Inter_400Regular', fontSize: 13, marginTop: 10 },
   sectionHeader: { alignItems: 'center', flexDirection: 'row', gap: 8, marginTop: 30 },
   sectionTitle: { color: colors.ink, fontFamily: 'Inter_700Bold', fontSize: 18 },
   sectionCount: { backgroundColor: colors.divider, borderRadius: 12, color: colors.muted, fontFamily: 'Inter_600SemiBold', fontSize: 12, minWidth: 24, overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 3, textAlign: 'center' },
