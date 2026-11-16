@@ -170,6 +170,7 @@ export type PODItem = {
 };
 
 export type ProofOfDeliveryDraft = {
+  device_location?: import('../../shared/device_location').DeviceLocation;
   name: string;
   request_id?: string;
   docstatus: number;

@@ -5,6 +5,7 @@ import * as Crypto from 'expo-crypto';
 import { FieldError, OptionList, RequestScreen, SubmitButton, requestStyles as styles } from '../../../../features/requests/components';
 import { getCollectionSetup, getTripDetails, getUnplannedCollections, reportUnplannedCollection, searchCollectionItems } from '../../../../features/trips/api';
 import type { CollectionItemOption, CollectionRecord } from '../../../../features/trips/api';
+import { captureDeviceLocation, type DeviceLocation } from '../../../../shared/device_location';
 
 type Line = { id: string; item?: CollectionItemOption; qty: string; uom: string; batch: string; serials: string };
 const newLine = (): Line => ({ id: Crypto.randomUUID(), qty: '', uom: '', batch: '', serials: '' });
@@ -32,6 +33,7 @@ export default function CollectionsScreen() {
   const [searching, setSearching] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const requestId = useRef(Crypto.randomUUID());
+  const locationEvidence = useRef<DeviceLocation | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -83,13 +85,16 @@ export default function CollectionsScreen() {
     if (Object.keys(next).length) { setError('Check the highlighted fields.'); return; }
     setBusy(true); setError(''); setSuccess('');
     try {
+      locationEvidence.current ||= await captureDeviceLocation();
       const result = await reportUnplannedCollection(tripName, {
+        device_location: locationEvidence.current,
         request_id: requestId.current, stop_name: stopName, reference_doctype: referenceType, reference_name: loadedReference, released_by: releasedBy.trim(), reason: reason.trim(),
         items: lines.map((line) => ({ item_code: line.item!.name, collection_reference_row: line.item!.reference_row, delivered_qty: Number(line.qty), uom: line.uom, batch_no: line.batch || null, serial_no: line.serials.trim() || null })),
       });
       setSuccess(`${result.name} recorded. Dispatch will review this collection and arrange stock receipt.`);
       setHistory((current) => [{ name: result.name, collection_location: stopLabel, collection_review_status: 'Pending Review' }, ...current.filter((record) => record.name !== result.name)]);
       requestId.current = Crypto.randomUUID();
+      locationEvidence.current = null;
       setLines([newLine()]); setReason(''); setReleasedBy(''); setOpen(null);
     } catch (exception) { setError(exception instanceof Error ? exception.message : 'Could not record collection.'); }
     finally { setBusy(false); }

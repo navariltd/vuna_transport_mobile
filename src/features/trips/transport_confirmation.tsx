@@ -7,6 +7,7 @@ import { TaskErrorBanner } from '../requests/components';
 import { transportForm, transportPayload, type PODFormSubmission } from '../proof-of-delivery/form_model';
 import type { TransferProof } from './api';
 import { ScreenHeader, StateView } from './components';
+import { captureDeviceLocation } from '../../shared/device_location';
 import { taskStyles } from './task_components';
 import { isConnectivityFailure } from '../../auth/session';
 import { enqueueOfflineOperation } from '../../offline/outbox';
@@ -45,7 +46,8 @@ export default function TransportConfirmationScreen() {
     try {
       // Never replace evidence for an operation which may already have posted.
       if (await pendingTransportProof(taskName)) { setQueued(true); return; }
-      const payload: OfflineTransportPODPayload = { tripName, stopName, taskName, proof: transportPayload(proof, draft, requestId.current), signatureSvg, photoUri: photo?.uri, photoFilename: photo?.filename };
+      const location = await captureDeviceLocation();
+      const payload: OfflineTransportPODPayload = { tripName, stopName, taskName, proof: { ...transportPayload(proof, draft, requestId.current), device_location: location }, signatureSvg, photoUri: photo?.uri, photoFilename: photo?.filename };
       const id = await enqueueOfflineOperation('submit_transport_pod', taskName, payload);
       const result = await synchronizeOfflineOperation(id);
       if (!('name' in result)) throw new Error('Unexpected proof synchronization result.');

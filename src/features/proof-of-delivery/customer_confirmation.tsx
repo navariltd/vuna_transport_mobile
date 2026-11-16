@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import { PODForm } from './pod_form';
+import { captureDeviceLocation } from '../../shared/device_location';
 import { applyCustomerForm, customerForm, type PODFormSubmission } from './form_model';
 import { ScreenHeader, StateView } from '../trips/components';
 import type { ProofOfDeliveryDraft } from '../trips/types';
@@ -32,7 +33,10 @@ export default function CustomerConfirmationScreen() {
   useEffect(() => { void load(); }, [load]);
   const submit = async ({ draft, signatureSvg, photo }: PODFormSubmission) => {
     if (!pod) return;
-    const payload: OfflinePODPayload = { tripName, stopName, pod: applyCustomerForm(pod, draft), signatureSvg, photoUri: photo?.uri, photoFilename: photo?.filename };
+    // Keep the original event evidence when editing/retrying an already queued proof.
+    const previous = operationId ? await getOfflineOperation(operationId) : null;
+    const location = (previous?.payload as OfflinePODPayload | undefined)?.pod.device_location || await captureDeviceLocation();
+    const payload: OfflinePODPayload = { tripName, stopName, pod: { ...applyCustomerForm(pod, draft), device_location: location }, signatureSvg, photoUri: photo?.uri, photoFilename: photo?.filename };
     try {
       let id = operationId;
       if (id) {
