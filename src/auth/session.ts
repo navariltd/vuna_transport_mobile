@@ -5,6 +5,57 @@ const PENDING_SESSION_KEY = 'vuna_transport_mobile_pending_session';
 const DEFAULT_REQUEST_TIMEOUT = 45000;
 type SessionInterruption = 'expired' | 'device';
 const sessionListeners = new Set<(reason: SessionInterruption) => void>();
+const sessionChangeListeners = new Set<(session: MobileSession | null) => void>();
+let sessionMutation: Promise<unknown> = Promise.resolve();
+let signInGeneration = 0;
+
+function mutateSession<T>(operation: () => Promise<T>): Promise<T> {
+  const task = sessionMutation.then(operation, operation);
+  sessionMutation = task.then(() => {}, () => {});
+  return task;
+}
+
+function notifySessionChanged(session: MobileSession | null) {
+  for (const listener of sessionChangeListeners) listener(session);
+}
+
+export function subscribeToSessionChange(listener: (session: MobileSession | null) => void) {
+  sessionChangeListeners.add(listener);
+  return () => { sessionChangeListeners.delete(listener); };
+}
+
+export type MobileMapConfiguration = {
+  version: 1;
+  selection: 'Automatic' | 'OpenStreetMap' | 'Google Maps';
+  provider: 'google' | 'openstreetmap';
+};
+
+export function normalizeMobileMapConfiguration(value: unknown): MobileMapConfiguration | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  if (record.version !== 1 || !['Automatic', 'OpenStreetMap', 'Google Maps'].includes(String(record.selection))) return null;
+  if (record.provider !== 'google' && record.provider !== 'openstreetmap') return null;
+  if (record.selection === 'OpenStreetMap' && record.provider !== 'openstreetmap') return null;
+  if (record.selection === 'Google Maps' && record.provider !== 'google') return null;
+  return { version: 1, selection: record.selection as MobileMapConfiguration['selection'], provider: record.provider };
+}
+
+function sameSession(a: MobileSession | null, b: MobileSession) {
+  return Boolean(a && a.sid === b.sid && a.siteUrl === b.siteUrl && a.user === b.user);
+}
+
+async function updateMapConfiguration(session: MobileSession, value: unknown) {
+  const mapConfig = normalizeMobileMapConfiguration(value);
+  if (!mapConfig) return;
+  await mutateSession(async () => {
+    const current = await getSession();
+    if (!sameSession(current, session) || !current) return;
+    if (JSON.stringify(current.mapConfig) === JSON.stringify(mapConfig)) return;
+    const updated = { ...current, mapConfig };
+    await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(updated));
+    notifySessionChanged(updated);
+  });
+}
 
 export function subscribeToSessionInterruption(listener: (reason: SessionInterruption) => void) {
   sessionListeners.add(listener);
@@ -39,6 +90,7 @@ export type MobileSession = {
   siteUrl: string;
   sid: string;
   user: string;
+  mapConfig?: MobileMapConfiguration;
 };
 
 export async function getSession() {
@@ -47,7 +99,11 @@ export async function getSession() {
 }
 
 export async function clearSession() {
-  await Promise.all([SecureStore.deleteItemAsync(SESSION_KEY), SecureStore.deleteItemAsync(PENDING_SESSION_KEY)]);
+  signInGeneration += 1;
+  await mutateSession(async () => {
+    await Promise.all([SecureStore.deleteItemAsync(SESSION_KEY), SecureStore.deleteItemAsync(PENDING_SESSION_KEY)]);
+    notifySessionChanged(null);
+  });
 }
 
 export async function getPendingSession(): Promise<MobileSession | null> {
@@ -56,15 +112,18 @@ export async function getPendingSession(): Promise<MobileSession | null> {
 }
 
 async function interruptSession(session: MobileSession, reason: SessionInterruption) {
-  const current = await getSession();
-  const pending = await getPendingSession();
-  // A late response from an older login must not sign out a newer session.
-  const matches = (candidate: MobileSession | null) => candidate?.sid === session.sid && candidate.siteUrl === session.siteUrl;
-  if (!matches(current) && !matches(pending)) return;
-  if (reason === 'device') await SecureStore.setItemAsync(PENDING_SESSION_KEY, JSON.stringify(session));
-  else await SecureStore.deleteItemAsync(PENDING_SESSION_KEY);
-  await SecureStore.deleteItemAsync(SESSION_KEY);
-  for (const listener of sessionListeners) listener(reason);
+  return mutateSession(async () => {
+    const current = await getSession();
+    const pending = await getPendingSession();
+    // A late response from an older login must not sign out a newer session.
+    const matches = (candidate: MobileSession | null) => sameSession(candidate, session);
+    if (!matches(current) && !matches(pending)) return;
+    if (reason === 'device') await SecureStore.setItemAsync(PENDING_SESSION_KEY, JSON.stringify(session));
+    else await SecureStore.deleteItemAsync(PENDING_SESSION_KEY);
+    await SecureStore.deleteItemAsync(SESSION_KEY);
+    notifySessionChanged(null);
+    for (const listener of sessionListeners) listener(reason);
+  });
 }
 
 async function authenticatedRequest(session: MobileSession, method: string, args: Record<string, unknown>, fallback: string, timeoutMs = DEFAULT_REQUEST_TIMEOUT) {
@@ -86,12 +145,16 @@ export async function refreshDeviceRegistration(device: Record<string, unknown>)
   if (!session) throw new MobileAccessError('expired', 'Please sign in again to check device access.');
   const result = await authenticatedRequest(session, 'vuna_transport.api.bootstrap_mobile_device', device, 'Could not check device access.');
   if (result?.allowed) {
-    const pending = await getPendingSession();
-    if (pending?.sid !== session.sid || pending.siteUrl !== session.siteUrl) {
-      throw new MobileAccessError('expired', 'Your sign-in changed. Please sign in again.');
-    }
-    await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(session));
-    await SecureStore.deleteItemAsync(PENDING_SESSION_KEY);
+    await mutateSession(async () => {
+      const pending = await getPendingSession();
+      if (!sameSession(pending, session)) {
+        throw new MobileAccessError('expired', 'Your sign-in changed. Please sign in again.');
+      }
+      const restored = { ...session, mapConfig: normalizeMobileMapConfiguration(result.map_config) || session.mapConfig };
+      await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(restored));
+      await SecureStore.deleteItemAsync(PENDING_SESSION_KEY);
+      notifySessionChanged(restored);
+    });
   }
   return result;
 }
@@ -134,10 +197,18 @@ export async function callMobileMethod(
     await interruptSession(session, 'device');
     throw new MobileAccessError('device', result.message || 'This device is not currently authorized.');
   }
+  if (!sameSession(await getSession(), session)) {
+    throw new MobileAccessError('expired', 'Your sign-in changed while work was loading. Refresh to load the current account.');
+  }
+  await updateMapConfiguration(session, result?.map_config);
+  if (!sameSession(await getSession(), session)) {
+    throw new MobileAccessError('expired', 'Your sign-in changed while work was loading. Refresh to load the current account.');
+  }
   return result;
 }
 
 export async function loginAndRegisterDevice(siteUrl: string, username: string, password: string, device: Record<string, unknown>) {
+  const generation = ++signInGeneration;
   const { response: loginResponse, payload: loginPayload } = await requestJson(
     `${siteUrl}/api/method/login`,
     {
@@ -163,15 +234,20 @@ export async function loginAndRegisterDevice(siteUrl: string, username: string, 
   if (!bootstrapResponse.ok || bootstrapPayload.exc) throw new Error(getServerMessage(bootstrapPayload, 'Device registration failed.'));
 
   const result = bootstrapPayload.message;
-  const session = { siteUrl, sid, user: username };
-  if (!result?.allowed) {
-    await SecureStore.deleteItemAsync(SESSION_KEY);
-    await SecureStore.setItemAsync(PENDING_SESSION_KEY, JSON.stringify(session));
-    return { allowed: false, message: result?.message || 'This device is not allowed.' };
-  }
-  await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(session));
-  await SecureStore.deleteItemAsync(PENDING_SESSION_KEY);
-  return { allowed: true, message: null };
+  const session: MobileSession = { siteUrl, sid, user: username, mapConfig: normalizeMobileMapConfiguration(result?.map_config) || undefined };
+  return mutateSession(async () => {
+    if (generation !== signInGeneration) throw new MobileAccessError('expired', 'Your sign-in changed. Please try again.');
+    if (!result?.allowed) {
+      await SecureStore.deleteItemAsync(SESSION_KEY);
+      await SecureStore.setItemAsync(PENDING_SESSION_KEY, JSON.stringify(session));
+      notifySessionChanged(null);
+      return { allowed: false, message: result?.message || 'This device is not allowed.' };
+    }
+    await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(session));
+    await SecureStore.deleteItemAsync(PENDING_SESSION_KEY);
+    notifySessionChanged(session);
+    return { allowed: true, message: null };
+  });
 }
 
 async function requestJson(

@@ -48,6 +48,60 @@ function setup() {
   return { api, storage, replies, calls };
 }
 
+test('mobile map preferences accept only the credential-free supported contract', () => {
+  const { api } = setup();
+  const safe = api.normalizeMobileMapConfiguration({ version: 1, selection: 'Automatic', provider: 'google', api_key: 'must-not-be-stored' });
+  assert.equal(JSON.stringify(safe), JSON.stringify({ version: 1, selection: 'Automatic', provider: 'google' }));
+  for (const value of [null, {}, { version: 2, selection: 'Automatic', provider: 'google' }, { version: 1, selection: 'Google Maps', provider: 'openstreetmap' }, { version: 1, selection: 'OpenStreetMap', provider: 'google' }, { version: 1, selection: 'Automatic', provider: 'unknown' }]) {
+    assert.equal(api.normalizeMobileMapConfiguration(value), null);
+  }
+});
+
+test('login caches map preferences without exposing backend credentials', async () => {
+  const { api, storage, replies } = setup();
+  replies.push(response(200, {}), response(200, { message: { allowed: true, map_config: { version: 1, selection: 'Automatic', provider: 'google', api_key: 'private-key' } } }));
+  await api.loginAndRegisterDevice(session.siteUrl, session.user, 'password', device);
+  assert.equal((await api.getSession()).mapConfig.provider, 'google');
+  assert.ok(!storage.get(sessionKey).includes('private-key'));
+});
+
+test('offline work refresh changes provider and notifies mounted maps', async () => {
+  const { api, storage, replies } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  const changes = [];
+  const unsubscribe = api.subscribeToSessionChange((next) => changes.push(next));
+  replies.push(response(200, { message: { map_config: { version: 1, selection: 'OpenStreetMap', provider: 'openstreetmap' } } }));
+  await api.getOfflineWork('installation-one');
+  assert.equal(changes[0].mapConfig.provider, 'openstreetmap');
+  assert.equal((await api.getSession()).mapConfig.provider, 'openstreetmap');
+  await api.clearSession();
+  assert.equal(changes[1], null);
+  unsubscribe();
+});
+
+test('late successful map response cannot change a newer site or cache its work', async () => {
+  const { api, storage, replies } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  let finish;
+  replies.push(() => new Promise((resolve) => { finish = resolve; }));
+  const request = api.getOfflineWork('installation-one');
+  const rejected = assert.rejects(request, api.MobileAccessError);
+  await new Promise(setImmediate);
+  const newer = { ...session, siteUrl: 'https://another.test', mapConfig: { version: 1, selection: 'OpenStreetMap', provider: 'openstreetmap' } };
+  storage.set(sessionKey, JSON.stringify(newer));
+  finish(response(200, { message: { map_config: { version: 1, selection: 'Automatic', provider: 'google' } } }));
+  await rejected;
+  assert.equal(storage.get(sessionKey), JSON.stringify(newer));
+});
+
+test('new login without map preferences does not inherit the old site preference', async () => {
+  const { api, storage, replies } = setup();
+  storage.set(sessionKey, JSON.stringify({ ...session, mapConfig: { version: 1, selection: 'Automatic', provider: 'google' } }));
+  replies.push(response(200, {}), response(200, { message: { allowed: true } }));
+  await api.loginAndRegisterDevice('https://another.test', 'another@example.test', 'password', device);
+  assert.equal((await api.getSession()).mapConfig, undefined);
+});
+
 test('pending approval is isolated from the active session and can be refreshed', async () => {
   const { api, storage, replies, calls } = setup();
   replies.push(response(200, {}), response(200, { message: { allowed: false, message: 'Awaiting approval' } }));
