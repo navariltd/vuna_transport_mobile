@@ -122,6 +122,7 @@ jobs:
       - name: Build signed ARM64 release
         env:
           CI: '1'
+          VUNA_TRANSPORT_GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.VUNA_TRANSPORT_GOOGLE_MAPS_ANDROID_API_KEY }}
           VUNA_TRANSPORT_VERSION_NAME: ${{ steps.version.outputs.name }}
           VUNA_TRANSPORT_VERSION_CODE: ${{ steps.version.outputs.code }}
         run: ./scripts/build-release-apk.sh

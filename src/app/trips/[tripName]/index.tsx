@@ -10,6 +10,7 @@ import { startDeliveryTrip } from '../../../features/trips/api';
 import type { DeliveryTrip } from '../../../features/trips/types';
 import { cacheStartedTrip, loadTripDetails } from '../../../offline/trip_repository';
 import { colors, spacing } from '../../../shared/theme';
+import { TripMap } from '../../../features/trips/trip_map';
 
 export default function DeliveryTripScreen() {
   const { tripName, focusStop } = useLocalSearchParams<{ tripName: string; focusStop?: string }>();
@@ -21,6 +22,7 @@ export default function DeliveryTripScreen() {
   const [requestMenuOpen, setRequestMenuOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [mapVisible, setMapVisible] = useState(false);
 
   const load = useCallback(async () => {
     if (!tripName) return;
@@ -87,6 +89,9 @@ export default function DeliveryTripScreen() {
 
         <View style={styles.sectionHeading}>
           <View style={styles.headerActions}>
+            <Pressable accessibilityRole="button" accessibilityLabel={mapVisible ? 'Hide trip map' : 'Show trip map'} onPress={() => setMapVisible((visible) => !visible)} style={styles.requestsButton}>
+              <Ionicons color={colors.ink} name="map-outline" size={17} /><Text style={styles.requestsButtonText}>{mapVisible ? 'Hide map' : 'Map'}</Text>
+            </Pressable>
             {trip.actions?.can_report_incident ? <Pressable onPress={() => router.push(`/trips/${encodeURIComponent(trip.name)}/incidents` as never)} style={styles.incidentButton}>
               <Ionicons color={colors.danger} name="warning-outline" size={17} />
               <Text style={styles.incidentButtonText}>Incident</Text>
@@ -101,6 +106,7 @@ export default function DeliveryTripScreen() {
             </Pressable> : null}
           </View>
         </View>
+        {mapVisible ? <TripMap tripName={trip.name} stops={trip.stops} activeStop={currentStop} height={300} /> : null}
         {trip.stops.map((stop) => (
           <DeliveryStopCard
             current={stop.name === currentStop}
@@ -147,7 +153,7 @@ const styles = StyleSheet.create({
   primaryActionText: { color: colors.surface, fontFamily: 'Inter_600SemiBold', fontSize: 15 },
   actionDisabled: { opacity: 0.55 },
   actionError: { color: colors.danger, fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 18, marginTop: 10 },
-  headerActions: { alignItems: 'center', flexDirection: 'row', gap: 8 },
+  headerActions: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   incidentButton: { alignItems: 'center', borderColor: colors.danger, borderRadius: 99, borderWidth: 1, flexDirection: 'row', gap: 5, minHeight: 38, paddingHorizontal: 12 },
   incidentButtonText: { color: colors.danger, fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   requestButton: { alignItems: 'center', backgroundColor: colors.ink, borderRadius: 99, flexDirection: 'row', gap: 4, minHeight: 38, paddingHorizontal: 14 },
