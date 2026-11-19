@@ -6,6 +6,7 @@ const DEFAULT_REQUEST_TIMEOUT = 45000;
 type SessionInterruption = 'expired' | 'device';
 const sessionListeners = new Set<(reason: SessionInterruption) => void>();
 const sessionChangeListeners = new Set<(session: MobileSession | null) => void>();
+const sessionChecks = new Map<string, Promise<boolean>>();
 let sessionMutation: Promise<unknown> = Promise.resolve();
 let signInGeneration = 0;
 
@@ -132,12 +133,41 @@ async function authenticatedRequest(session: MobileSession, method: string, args
     headers: { 'Content-Type': 'application/json', Cookie: `sid=${session.sid}` },
     method: 'POST',
   }, timeoutMs);
-  if (response.status === 401 || payload.session_expired || ['AuthenticationError', 'SessionExpired'].includes(payload.exc_type)) {
+  if (isExpiredResponse(response, payload) || (isGuestAccessDenial(response, payload) && await confirmGuestSession(session))) {
     await interruptSession(session, 'expired');
     throw new MobileAccessError('expired', 'Your session has expired. Please sign in again. Your saved work is still on this device.');
   }
   if (!response.ok || payload.exc) throw new MobileRequestError(getServerMessage(payload, fallback), 'response');
   return payload.message;
+}
+
+function isExpiredResponse(response: Response, payload: ServerPayload) {
+  return response.status === 401 || Boolean(payload.session_expired) || ['AuthenticationError', 'SessionExpired'].includes(payload.exc_type);
+}
+
+function isGuestAccessDenial(response: Response, payload: ServerPayload) {
+  if (response.status !== 403 || payload.exc_type !== 'PermissionError') return false;
+  // Frappe uses this denial both for Guest access and genuinely unavailable methods.
+  // Do not interpret an ordinary role/document PermissionError as session expiry.
+  const message = getServerMessage(payload, '').replace(/<[^>]*>/g, ' ');
+  return /not\s+whitelisted/i.test(message) && /login\s+to\s+access/i.test(message);
+}
+
+function confirmGuestSession(session: MobileSession): Promise<boolean> {
+  const key = JSON.stringify([session.siteUrl, session.user, session.sid]);
+  const pending = sessionChecks.get(key);
+  if (pending) return pending;
+  const check = (async () => {
+    const { response, payload } = await requestJson(`${session.siteUrl}/api/method/frappe.auth.get_logged_user`, {
+      headers: { Cookie: `sid=${session.sid}` },
+      method: 'GET',
+    }, 10000);
+    return isExpiredResponse(response, payload)
+      || isGuestAccessDenial(response, payload)
+      || (response.ok && payload.message === 'Guest');
+  })().finally(() => { sessionChecks.delete(key); });
+  sessionChecks.set(key, check);
+  return check;
 }
 
 export async function refreshDeviceRegistration(device: Record<string, unknown>) {

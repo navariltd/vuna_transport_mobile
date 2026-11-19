@@ -173,6 +173,93 @@ test('ordinary permission failures do not sign out the user', async () => {
   assert.ok(await api.getSession());
 });
 
+function guestWhitelistResponse() {
+  return response(403, {
+    exc_type: 'PermissionError', exc: 'PermissionError',
+    _server_messages: JSON.stringify([JSON.stringify({ message: '<details><summary>You are not permitted to access this resource. Login to access</summary>Function <strong>vuna_transport.api.get_mobile_offline_work</strong> is not whitelisted.</details>' })]),
+  });
+}
+
+test('Guest whitelist denial confirms expiry and redirects without deleting saved work', async () => {
+  const { api, storage, replies, calls } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  storage.set('offline-proof', 'unsynced work');
+  const reasons = [];
+  api.subscribeToSessionInterruption((reason) => reasons.push(reason));
+  replies.push(guestWhitelistResponse(), guestWhitelistResponse());
+  await assert.rejects(api.getOfflineWork('installation-one'), (error) => error instanceof api.MobileAccessError && error.reason === 'expired');
+  assert.equal(await api.getSession(), null);
+  assert.equal(storage.get('offline-proof'), 'unsynced work');
+  assert.deepEqual(reasons, ['expired']);
+  assert.equal(calls[1][0], `${session.siteUrl}/api/method/frappe.auth.get_logged_user`);
+  assert.equal(calls[1][1].headers.Cookie, `sid=${session.sid}`);
+});
+
+test('an unavailable endpoint does not sign out a still-authenticated user', async () => {
+  const { api, storage, replies } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  replies.push(guestWhitelistResponse(), response(200, { message: session.user }));
+  await assert.rejects(api.getOfflineWork('installation-one'), api.MobileRequestError);
+  assert.ok(await api.getSession());
+});
+
+test('failed session verification preserves credentials for offline work', async () => {
+  const { api, storage, replies } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  replies.push(guestWhitelistResponse(), () => { throw new TypeError('offline'); });
+  await assert.rejects(api.getOfflineWork('installation-one'), api.isConnectivityFailure);
+  assert.ok(await api.getSession());
+});
+
+test('late Guest confirmation cannot sign out a newer login', async () => {
+  const { api, storage, replies } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  let finish;
+  replies.push(guestWhitelistResponse(), () => new Promise((resolve) => { finish = resolve; }));
+  const request = api.getOfflineWork('installation-one');
+  const rejected = assert.rejects(request, api.MobileAccessError);
+  while (!finish) await new Promise(setImmediate);
+  storage.set(sessionKey, JSON.stringify({ ...session, sid: 'new-session' }));
+  finish(guestWhitelistResponse());
+  await rejected;
+  assert.equal((await api.getSession()).sid, 'new-session');
+});
+
+test('expired pending device approval also handles Guest whitelist errors', async () => {
+  const { api, storage, replies } = setup();
+  storage.set(pendingKey, JSON.stringify(session));
+  replies.push(guestWhitelistResponse(), response(401, {}));
+  await assert.rejects(api.refreshDeviceRegistration(device), (error) => error.reason === 'expired');
+  assert.equal(await api.getPendingSession(), null);
+});
+
+test('a Guest identity response confirms that sign-in is required', async () => {
+  const { api, storage, replies } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  replies.push(guestWhitelistResponse(), response(200, { message: 'Guest' }));
+  await assert.rejects(api.getOfflineWork('installation-one'), (error) => error.reason === 'expired');
+  assert.equal(await api.getSession(), null);
+});
+
+test('concurrent Guest failures share a verification request and redirect only once', async () => {
+  const { api, storage, replies, calls } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  let finish;
+  replies.push(guestWhitelistResponse(), guestWhitelistResponse(), () => new Promise((resolve) => { finish = resolve; }));
+  const reasons = [];
+  api.subscribeToSessionInterruption((reason) => reasons.push(reason));
+  const results = Promise.allSettled([api.getOfflineWork('installation-one'), api.getDriverProfile('installation-one')]);
+  while (!finish) await new Promise(setImmediate);
+  await new Promise(setImmediate);
+  finish(response(401, {}));
+  for (const result of await results) {
+    assert.equal(result.status, 'rejected');
+    assert.equal(result.reason.reason, 'expired');
+  }
+  assert.equal(calls.filter(([url]) => url.endsWith('/frappe.auth.get_logged_user')).length, 1);
+  assert.deepEqual(reasons, ['expired']);
+});
+
 test('a missing driver link is not treated as device revocation', async () => {
   const { api, storage, replies } = setup();
   storage.set(sessionKey, JSON.stringify(session));
