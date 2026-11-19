@@ -6,11 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#F7F7F5"
-    },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#061735",
@@ -35,6 +30,24 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#F7F7F5"
+        }
+      ],
+      "expo-system-ui",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "2.3.21",
+            "extraProguardRules": "# WorkManager creates this Room database through reflection at startup.\n-keep class androidx.work.impl.WorkDatabase_Impl { public <init>(); }"
+          }
+        }
+      ],
       "@maplibre/maplibre-react-native",
       [
         "expo-image-picker",

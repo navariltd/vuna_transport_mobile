@@ -5,6 +5,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import { ScreenHeader, StateView } from '../../../features/trips/components';
 import { TaskErrorBanner } from '../../../features/requests/components';
 import { getTripIncidents, reportTripIncident, resolveTripIncident } from '../../../features/trips/api';
@@ -29,7 +30,7 @@ export default function TripIncidentsScreen() {
   const [cargoAffected, setCargoAffected] = useState(false);
   const [driverAffected, setDriverAffected] = useState(false);
   const locationEvidence = useRef<DeviceLocation | null>(null);
-  const contentRef = useRef<ScrollView>(null);
+  const contentRef = useRef<ScrollViewInstance>(null);
   const [resolving, setResolving] = useState<VehicleIncidentSummary | null>(null);
   const [resolution, setResolution] = useState('');
   const requestId = useRef(Crypto.randomUUID());
