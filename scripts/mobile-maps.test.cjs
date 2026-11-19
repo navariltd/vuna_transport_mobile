@@ -70,7 +70,10 @@ test('native config keeps app identity and exposes only key-presence flags publi
     const withKeys = configure({ config: base });
     assert.equal(withKeys.android.package, base.android.package);
     assert.equal(withKeys.version, base.version);
-    assert.equal(withKeys.plugins.find((plugin) => plugin[0] === 'react-native-maps')[1].androidGoogleMapsApiKey, 'android-test-key');
+    assert.equal(withKeys.android.config.googleMaps.apiKey, 'android-test-key');
+    assert.equal(withKeys.ios.config.googleMapsApiKey, 'ios-test-key');
+    assert.ok(withKeys.plugins.includes('@googlemaps/react-native-navigation-sdk'));
+    assert.ok(!withKeys.plugins.some((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === 'react-native-maps'));
     assert.deepEqual(withKeys.extra.mobileMaps, { googleAndroidConfigured: true, googleIosConfigured: true });
     assert.ok(!JSON.stringify(withKeys.extra).includes('test-key'));
     assert.equal(withKeys.plugins.filter((plugin) => plugin[0] === 'expo-location').length, 1);
@@ -78,5 +81,37 @@ test('native config keeps app identity and exposes only key-presence flags publi
   } finally {
     if (oldAndroid === undefined) delete process.env[androidName]; else process.env[androidName] = oldAndroid;
     if (oldIos === undefined) delete process.env[iosName]; else process.env[iosName] = oldIos;
+  }
+});
+
+test('SDK 58 native plugins are idempotent and preserve the branded splash and app identity', () => {
+  const configure = require('../app.config.js');
+  const base = require('../app.json').expo;
+  assert.equal(base.android.package, 'ke.navari.vunatransport');
+  assert.equal(base.scheme, 'vuna-transport');
+  assert.equal(base.splash, undefined);
+  const once = configure({ config: base });
+  const twice = configure({ config: once });
+  const pluginName = (plugin) => Array.isArray(plugin) ? plugin[0] : plugin;
+  for (const name of ['expo-font', 'expo-secure-store', 'expo-status-bar', 'expo-splash-screen', 'expo-system-ui', 'expo-build-properties', '@googlemaps/react-native-navigation-sdk', 'expo-location']) {
+    assert.equal(twice.plugins.filter((plugin) => pluginName(plugin) === name).length, 1, `${name} must be configured exactly once`);
+  }
+  const splash = twice.plugins.find((plugin) => pluginName(plugin) === 'expo-splash-screen')[1];
+  assert.equal(splash.image, './assets/splash-icon.png');
+  assert.equal(splash.backgroundColor, '#F7F7F5');
+  assert.equal(twice.userInterfaceStyle, 'light');
+  assert.equal(twice.android.package, base.android.package);
+  assert.equal(twice.extra.eas.projectId, base.extra.eas.projectId);
+  const nativeBuild = twice.plugins.find((plugin) => pluginName(plugin) === 'expo-build-properties')[1];
+  assert.match(nativeBuild.android.extraProguardRules, /-keep class androidx\.work\.impl\.WorkDatabase_Impl \{ public <init>\(\); \}/);
+  assert.equal(nativeBuild.android.enableMinifyInReleaseBuilds, undefined, 'Keep release optimization enabled; retain only the reflected entry point');
+  assert.equal(nativeBuild.android.kotlinVersion, '2.3.21');
+});
+
+test('bundled navigation notices match the SDK distribution', () => {
+  const { createHash } = require('node:crypto');
+  for (const [name, expected] of [['LICENSES', 'a53655ee33181db9c3e5a3558028a6bdf7db897b2f49636cd98a05cd0e3b0ba8'], ['NOTICE', '336c06bf83c7a2b3a76a5e5de5af18dba7168ec8b3793e3dac29223c80aa697a']]) {
+    const bytes = readFileSync(path.join(__dirname, `../assets/legal/google-navigation-8.1.0-${name}.txt`));
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), expected);
   }
 });

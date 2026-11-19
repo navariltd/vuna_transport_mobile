@@ -1,14 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Pressable, Text, View } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useRouter, useIsFocused } from 'expo-router';
+import { Platform, Pressable, Text, View } from 'react-native';
+import { MapColorScheme, MapView, type MapViewController } from '@googlemaps/react-native-navigation-sdk';
 import { colors } from '../../shared/theme';
-import { mappedStops, stopLabel, type TripMapProps } from './map_model';
+import { mappedStops, navigationMapPath, stopLabel, type TripMapProps } from './map_model';
 import { mapStyles as styles } from './openstreet_trip_map';
 import type { MobileRoadRoute } from './road_route_model';
+import { fullscreenMap } from './fullscreen_map_store';
 
-type GoogleTripMapProps = TripMapProps & {
+export type GoogleTripMapProps = TripMapProps & {
   roadRoute?: MobileRoadRoute;
   routeLoading?: boolean;
   routeError?: string;
@@ -16,16 +18,35 @@ type GoogleTripMapProps = TripMapProps & {
   onHideRoute?: () => void;
 };
 
-export function GoogleTripMap({ stops, activeStop, height = 250, fullscreen = false, onClose, roadRoute, routeLoading, routeError, onShowRoute, onHideRoute }: GoogleTripMapProps) {
-  const map = useRef<MapView>(null);
+export function GoogleTripMap(props: GoogleTripMapProps) {
+  const router = useRouter();
+  const focused = useIsFocused();
+  const owner = useId();
+  // Keep the source route state alive while removing only the native map. It
+  // must not remain attached to an Activity after its screen is detached.
+  useEffect(() => { fullscreenMap.update(owner, props); }, [owner, props]);
+  useEffect(() => () => fullscreenMap.clearOwner(owner), [owner]);
+  const expand = () => {
+    const id = fullscreenMap.open(owner, props);
+    // The Android fullscreen map is also the navigation surface. Expanding a
+    // map never initializes guidance or makes a destination/route request.
+    const path = Platform.OS === 'android' ? navigationMapPath(props, id) : null;
+    router.push((path || `/map/${id}`) as never);
+  };
+  if (!focused) return <View style={{ height: props.height || 250 }} />;
+  return <GoogleMapCanvas {...props} onExpand={expand} />;
+}
+
+function GoogleMapCanvas({ stops, activeStop, height = 250, fullscreen = false, onClose, roadRoute, routeLoading, routeError, onShowRoute, onHideRoute, onExpand }: GoogleTripMapProps & { onExpand: () => void }) {
+  const map = useRef<MapViewController | null>(null);
   const rows = useMemo(() => mappedStops(stops), [stops]);
   const coordinates = useMemo(() => rows.map(({ coordinate: [longitude, latitude] }) => ({ longitude, latitude })), [rows]);
   const routeCoordinates = useMemo(() => roadRoute ? [roadRoute.origin, ...roadRoute.segments.flat(), ...coordinates] : coordinates, [coordinates, roadRoute]);
   const [ready, setReady] = useState(false);
-  const [fullscreenVisible, setFullscreenVisible] = useState(false);
   const [location, setLocation] = useState<Location.LocationObjectCoords | null>(null);
   const [locationAllowed, setLocationAllowed] = useState(false);
   const [slow, setSlow] = useState(false);
+  const controllerCreated = useCallback((controller: MapViewController) => { map.current = controller; }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,18 +74,37 @@ export function GoogleTripMap({ stops, activeStop, height = 250, fullscreen = fa
 
   const fitStops = useCallback(() => {
     if (!ready || !map.current || !routeCoordinates.length) return;
-    if (routeCoordinates.every((point) => point.latitude === routeCoordinates[0].latitude && point.longitude === routeCoordinates[0].longitude)) {
-      map.current.animateCamera({ center: routeCoordinates[0], zoom: 15 }, { duration: 400 });
-    } else {
-      map.current.fitToCoordinates(routeCoordinates, { edgePadding: { top: 60, right: 64, bottom: 44, left: 44 }, animated: true });
-    }
+    const latitudes = routeCoordinates.map((point) => point.latitude);
+    const longitudes = routeCoordinates.map((point) => point.longitude);
+    const south = Math.min(...latitudes), north = Math.max(...latitudes);
+    const west = Math.min(...longitudes), east = Math.max(...longitudes);
+    const span = Math.max(north - south, east - west, 0.005);
+    map.current.moveCamera({ target: { lat: (south + north) / 2, lng: (west + east) / 2 }, zoom: Math.max(1, Math.min(15, Math.log2(180 / span))) });
   }, [routeCoordinates, ready]);
   useEffect(() => { fitStops(); }, [fitStops]);
 
+  useEffect(() => {
+    const controller = map.current;
+    if (!ready || !controller) return;
+    let cancelled = false;
+    void (async () => {
+      controller.clearMapView();
+      for (const { stop, number, coordinate: [lng, lat] } of rows) {
+        if (cancelled) return;
+        await controller.addMarker({ id: stop.name, position: { lat, lng }, title: `${number} · ${stopLabel(stop)}`, snippet: stop.name === activeStop ? 'Selected stop' : `Stop ${number}` });
+      }
+      for (const [index, segment] of (roadRoute?.segments || []).entries()) {
+        if (cancelled) return;
+        await controller.addPolyline({ id: `route-${index}`, points: segment.map((point) => ({ lat: point.latitude, lng: point.longitude })), color: '#2563EB', width: 4 });
+      }
+    })().catch(() => { /* Map disposal must not interrupt proof capture. */ });
+    return () => { cancelled = true; };
+  }, [ready, rows, activeStop, roadRoute]);
+
   const changeZoom = async (amount: number) => {
     try {
-      const camera = await map.current?.getCamera();
-      if (camera) map.current?.animateCamera({ zoom: Math.max(1, Math.min(20, (camera.zoom ?? 5) + amount)) });
+      const camera = await map.current?.getCameraPosition();
+      if (camera) map.current?.moveCamera({ ...camera, zoom: Math.max(1, Math.min(20, (camera.zoom ?? 5) + amount)) });
     } catch { /* A map that has not finished mounting cannot be zoomed yet. */ }
   };
   const initial = coordinates[0] || { longitude: 37.9062, latitude: -0.0236 };
@@ -73,30 +113,18 @@ export function GoogleTripMap({ stops, activeStop, height = 250, fullscreen = fa
     <>
       <View style={fullscreen ? styles.fullscreenContainer : [styles.container, { height }]}>
         <MapView
-          initialRegion={{ ...initial, latitudeDelta: 0.08, longitudeDelta: 0.08 }}
+          mapType={1}
+          mapColorScheme={MapColorScheme.LIGHT}
+          initialCameraPosition={{ target: { lat: initial.latitude, lng: initial.longitude }, zoom: 12 }}
           onMapReady={() => setReady(true)}
-          provider={PROVIDER_GOOGLE}
-          showsUserLocation={locationAllowed}
-          showsMyLocationButton={false}
-          toolbarEnabled={false}
-          rotateEnabled={false}
-          pitchEnabled={false}
+          myLocationEnabled={locationAllowed}
+          myLocationButtonEnabled={false}
+          mapToolbarEnabled={false}
+          rotateGesturesEnabled={false}
+          tiltGesturesEnabled={false}
           style={styles.map}
-          ref={map}
-        >
-          {roadRoute?.segments.map((segment, index) => <Polyline key={`road-segment-${index}`} coordinates={segment} strokeColor="#2563EB" strokeWidth={4} />)}
-          {rows.map(({ stop, number, coordinate: [longitude, latitude] }) => {
-            const active = stop.name === activeStop;
-            return (
-              <Marker key={stop.name} identifier={stop.name} coordinate={{ longitude, latitude }} title={stopLabel(stop)} description={`Stop ${number}`}>
-                <View style={styles.markerContainer}>
-                  {active ? <View style={styles.markerLabel}><Text style={styles.markerLabelText} numberOfLines={1}>{stopLabel(stop)}</Text></View> : null}
-                  <View style={[styles.marker, active && styles.activeMarker]}><Text style={[styles.markerText, active && styles.activeMarkerText]}>{number}</Text></View>
-                </View>
-              </Marker>
-            );
-          })}
-        </MapView>
+          onMapViewControllerCreated={controllerCreated}
+        />
         {onShowRoute ? <View style={{ position: 'absolute', left: 10, top: fullscreen ? 44 : 10, maxWidth: '72%' }}>
           <Pressable accessibilityRole="button" accessibilityLabel={roadRoute ? 'Hide road route' : 'Show road route'} disabled={routeLoading} onPress={roadRoute ? onHideRoute : onShowRoute}
             style={{ backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, minHeight: 44, justifyContent: 'center' }}>
@@ -107,14 +135,13 @@ export function GoogleTripMap({ stops, activeStop, height = 250, fullscreen = fa
         </View> : null}
         {notice ? <View pointerEvents="none" style={[styles.notice, { bottom: 36, maxWidth: '80%' }]}><Text style={styles.noticeText}>{notice}</Text></View> : null}
         <View style={[styles.controls, fullscreen && styles.fullscreenControls]}>
-          <Pressable accessibilityLabel={fullscreen ? 'Close full screen map' : 'Open full screen map'} style={styles.controlButton} onPress={fullscreen ? onClose : () => setFullscreenVisible(true)}><Ionicons color={colors.ink} size={20} name={fullscreen ? 'contract-outline' : 'expand-outline'} /></Pressable>
+          <Pressable accessibilityLabel={fullscreen ? 'Close full screen map' : 'Open full screen map'} style={styles.controlButton} onPress={fullscreen ? onClose : onExpand}><Ionicons color={colors.ink} size={20} name={fullscreen ? 'contract-outline' : 'expand-outline'} /></Pressable>
           <Pressable accessibilityLabel="Zoom in" style={styles.controlButton} onPress={() => void changeZoom(1)}><Ionicons color={colors.ink} size={22} name="add" /></Pressable>
           <Pressable accessibilityLabel="Zoom out" style={styles.controlButton} onPress={() => void changeZoom(-1)}><Ionicons color={colors.ink} size={22} name="remove" /></Pressable>
-          {location ? <Pressable accessibilityLabel="Show my location" style={styles.controlButton} onPress={() => map.current?.animateCamera({ center: location, zoom: 15 })}><Ionicons color={colors.ink} size={20} name="locate" /></Pressable> : null}
+          {location ? <Pressable accessibilityLabel="Show my location" style={styles.controlButton} onPress={() => map.current?.moveCamera({ target: { lat: location.latitude, lng: location.longitude }, zoom: 15 })}><Ionicons color={colors.ink} size={20} name="locate" /></Pressable> : null}
           {rows.length ? <Pressable accessibilityLabel="Show delivery stops" style={styles.controlButton} onPress={fitStops}><Ionicons color={colors.ink} size={20} name="map-outline" /></Pressable> : null}
         </View>
       </View>
-      {!fullscreen && fullscreenVisible ? <Modal visible animationType="fade" onRequestClose={() => setFullscreenVisible(false)}><GoogleTripMap stops={stops} activeStop={activeStop} fullscreen roadRoute={roadRoute} routeError={routeError} routeLoading={routeLoading} onShowRoute={onShowRoute} onHideRoute={onHideRoute} onClose={() => setFullscreenVisible(false)} /></Modal> : null}
     </>
   );
 }

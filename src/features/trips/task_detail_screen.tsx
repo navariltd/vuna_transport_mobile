@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
@@ -12,6 +12,7 @@ import { loadTransportProof } from '../../offline/transport_proof_repository';
 import { colors } from '../../shared/theme';
 
 export default function TransportTaskScreen() {
+  const router = useRouter();
   const { tripName, stopName, taskName, completed } = useLocalSearchParams<{ tripName: string; stopName: string; taskName: string; completed?: string }>();
   const [fontsLoaded] = useTaskFonts();
   const [work, setWork] = useState<Awaited<ReturnType<typeof loadStopWork>>>();
@@ -55,9 +56,9 @@ export default function TransportTaskScreen() {
   const reference = proof?.reference_name || task.reference_name || task.return_request || 'Document pending';
   const status = task.queued ? task.status : proof?.docstatus === 1 ? proof.outcome || 'Completed' : task.status;
   return <View style={styles.screen}><StatusBar style="dark" />
-    <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} />}>
+    <ScrollView removeClippedSubviews={false} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} />}>
       <ScreenHeader back title={taskTitle(task)} />
-      <StopLocation stop={work.stop} party={task.party_name} />
+      <StopLocation stop={work.stop} party={task.party_name} tripName={tripName} />
       <View style={[styles.cardHeading, { marginTop: 22 }]}><View style={styles.flex}><Text style={styles.eyebrow}>{proof?.reference_doctype || task.reference_doctype || 'REFERENCE'}</Text><Text style={styles.body}>{reference}</Text></View><StatusBadge status={status} /></View>
       {task.queued ? <View style={styles.notice}><Text style={styles.cardTitle}>{task.status === 'Needs Attention' ? 'Handover needs attention' : 'Handover saved on this device'}</Text><Text style={styles.muted}>Awaiting server confirmation. Inventory and trip completion are not confirmed until synchronization succeeds.</Text></View> : null}
       {task.blocked_reason || proofError || (!work.trip.actual_start && !recorded) ? <View style={styles.notice}><Text style={styles.warning}>{task.blocked_reason || proofError || 'Start the trip before completing this action.'}</Text>{proofError ? <Pressable onPress={() => void load()} style={styles.outline}><Text style={styles.outlineText}>Retry loading details</Text></Pressable> : null}</View> : null}

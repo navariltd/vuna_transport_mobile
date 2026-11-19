@@ -1,5 +1,5 @@
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, useFonts } from '@expo-google-fonts/inter';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -13,6 +13,7 @@ import { AppUpdateCard } from '../../features/appUpdates/AppUpdateCard';
 type Driver = NonNullable<MobileDriverProfile['driver']>;
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
   const [driver, setDriver] = useState<Driver | null>(null);
   const [message, setMessage] = useState('');
@@ -34,7 +35,7 @@ export default function ProfileScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => { void loadProfile(); }, [loadProfile]);
 
@@ -66,6 +67,7 @@ export default function ProfileScreen() {
         </View>
       </> : <><Text style={styles.title}>Profile unavailable.</Text><Text style={styles.subtitle}>{message}</Text></>}
       <AppUpdateCard />
+      <Pressable accessibilityRole="button" onPress={() => router.push('/legal' as never)} style={styles.logout}><Text style={styles.logoutText}>Legal notices</Text></Pressable>
       <Pressable onPress={logout} style={styles.logout}><Text style={styles.logoutText}>Log out</Text></Pressable>
     </ScrollView>
   </View>;

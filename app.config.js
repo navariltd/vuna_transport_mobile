@@ -4,16 +4,19 @@ module.exports = ({ config }) => {
   const androidKey = process.env.VUNA_TRANSPORT_GOOGLE_MAPS_ANDROID_API_KEY?.trim();
   const iosKey = process.env.VUNA_TRANSPORT_GOOGLE_MAPS_IOS_API_KEY?.trim();
   const plugins = (config.plugins || []).filter((plugin) =>
-    !['react-native-maps', 'expo-location'].includes(Array.isArray(plugin) ? plugin[0] : plugin),
+    !['react-native-maps', '@googlemaps/react-native-navigation-sdk', 'expo-location'].includes(Array.isArray(plugin) ? plugin[0] : plugin),
   );
+  // SDK 58 requires these native plugins; keep the dynamic config idempotent.
+  for (const name of ['expo-font', 'expo-secure-store', 'expo-status-bar', 'expo-asset']) {
+    if (!plugins.some((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === name)) plugins.push(name);
+  }
   return {
     ...config,
+    android: { ...config.android, config: { ...config.android?.config, googleMaps: { apiKey: androidKey || '' } } },
+    ios: { ...config.ios, config: { ...config.ios?.config, googleMapsApiKey: iosKey || '' } },
     plugins: [
       ...plugins,
-      ['react-native-maps', {
-        ...(androidKey ? { androidGoogleMapsApiKey: androidKey } : {}),
-        ...(iosKey ? { iosGoogleMapsApiKey: iosKey } : {}),
-      }],
+      '@googlemaps/react-native-navigation-sdk',
       ['expo-location', {
         locationWhenInUsePermission: 'Allow Vuna Transport to show your position relative to delivery stops.',
       }],

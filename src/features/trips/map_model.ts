@@ -8,7 +8,19 @@ export type TripMapProps = {
   fullscreen?: boolean;
   onClose?: () => void;
   tripName?: string;
+  navigationTripName?: string;
 };
+
+// URLs carry identifiers only. Stop details and loaded road geometry remain in
+// the in-memory handoff and are checked against the signed-in trip on opening.
+export function navigationMapPath(props: TripMapProps, mapId: string): string | null {
+  const trip = props.navigationTripName || props.tripName;
+  if (!trip) return null;
+  const rows = mappedStops(props.stops);
+  const target = rows.find((row) => row.stop.name === props.activeStop) || rows[0];
+  if (!target) return null;
+  return `/trips/${encodeURIComponent(trip)}/navigation/${encodeURIComponent(target.stop.name)}?mapId=${encodeURIComponent(mapId)}&overview=${props.stops.length > 1 ? '1' : '0'}`;
+}
 
 export function stopCoordinate(stop: Pick<DeliveryStop, 'lat' | 'lng'>): Coordinate | null {
   const values = [stop.lng, stop.lat];

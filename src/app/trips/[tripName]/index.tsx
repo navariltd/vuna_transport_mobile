@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, useFonts } from '@expo-google-fonts/inter';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
 import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -13,6 +13,7 @@ import { colors, spacing } from '../../../shared/theme';
 import { TripMap } from '../../../features/trips/trip_map';
 
 export default function DeliveryTripScreen() {
+  const router = useRouter();
   const { tripName, focusStop } = useLocalSearchParams<{ tripName: string; focusStop?: string }>();
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
   const [trip, setTrip] = useState<DeliveryTrip | null>(null);
@@ -65,6 +66,7 @@ export default function DeliveryTripScreen() {
     <View style={styles.screen}>
       <StatusBar style="dark" />
       <ScrollView
+        removeClippedSubviews={false}
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={colors.ink} />}
       >
