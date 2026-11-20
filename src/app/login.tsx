@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, useFonts } from '@expo-google-fonts/inter';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -7,8 +7,10 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, RefreshCo
 import { clearSession, getPendingSession, loginAndRegisterDevice, MobileAccessError, refreshDeviceRegistration } from '../auth/session';
 import { requestOfflineSync } from '../offline/sync';
 import { getOnboardingRecord } from '../storage/onboarding';
+import { ChangeSite } from '../features/settings/ChangeSite';
 
 export default function LoginScreen() {
+  const router = useRouter();
   const { reason } = useLocalSearchParams<{ reason?: string }>();
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
   const [siteUrl, setSiteUrl] = useState('');
@@ -51,7 +53,7 @@ export default function LoginScreen() {
 
   useEffect(() => {
     getOnboardingRecord().then((record) => {
-      if (!record) return;
+      if (!record || record.requiresSiteSetup) { router.replace('/'); return; }
       setSiteUrl(record.siteUrl);
       setDevice({
         installation_id: record.installationId,
@@ -64,7 +66,7 @@ export default function LoginScreen() {
         app_version: '1.0.0',
       });
     });
-  }, []);
+  }, [router]);
 
   const signIn = async () => {
     setLoading(true); setError(''); setBlocked(false);
@@ -124,6 +126,7 @@ export default function LoginScreen() {
           <Pressable disabled={loading} onPress={async () => { await clearSession(); setBlocked(false); setPassword(''); setError(''); }} style={styles.secondaryButton}><Text style={styles.secondaryText}>Sign in with another account</Text></Pressable>
           <Text style={styles.subtitle}>Sync saved work on your old phone before switching. Unsynced work stays on that phone.</Text>
         </>}
+        <ChangeSite siteUrl={siteUrl} disabled={loading} onBusyChange={setLoading} />
       </ScrollView>
     </KeyboardAvoidingView>
   );

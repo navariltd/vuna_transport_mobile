@@ -9,6 +9,7 @@ import { ConnectivityBadge } from '../../offline/components';
 import { loadDriverProfile, type MobileDriverProfile } from '../../offline/profile_repository';
 import { getOnboardingRecord } from '../../storage/onboarding';
 import { AppUpdateCard } from '../../features/appUpdates/AppUpdateCard';
+import { ChangeSite } from '../../features/settings/ChangeSite';
 
 type Driver = NonNullable<MobileDriverProfile['driver']>;
 
@@ -18,11 +19,14 @@ export default function ProfileScreen() {
   const [driver, setDriver] = useState<Driver | null>(null);
   const [message, setMessage] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [siteUrl, setSiteUrl] = useState('');
+  const [changingSite, setChangingSite] = useState(false);
 
   const loadProfile = useCallback(async () => {
     try {
       const record = await getOnboardingRecord();
-      if (!record) return router.replace('/');
+      if (!record || record.requiresSiteSetup) return router.replace('/');
+      setSiteUrl(record.siteUrl);
       const loaded = await loadDriverProfile(record.installationId, record.deviceIdentifier);
       const profile = loaded.data;
       if (profile.linked && profile.driver) {
@@ -67,8 +71,9 @@ export default function ProfileScreen() {
         </View>
       </> : <><Text style={styles.title}>Profile unavailable.</Text><Text style={styles.subtitle}>{message}</Text></>}
       <AppUpdateCard />
+      <ChangeSite siteUrl={siteUrl} disabled={refreshing} onBusyChange={setChangingSite} />
       <Pressable accessibilityRole="button" onPress={() => router.push('/legal' as never)} style={styles.logout}><Text style={styles.logoutText}>Legal notices</Text></Pressable>
-      <Pressable onPress={logout} style={styles.logout}><Text style={styles.logoutText}>Log out</Text></Pressable>
+      <Pressable disabled={changingSite} onPress={logout} style={styles.logout}><Text style={styles.logoutText}>Log out</Text></Pressable>
     </ScrollView>
   </View>;
 }

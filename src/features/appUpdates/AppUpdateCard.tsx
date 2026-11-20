@@ -12,7 +12,7 @@ export function AppUpdateCard() {
     <Text style={styles.body}>{Application.nativeApplicationVersion || 'Development build'}{Application.nativeBuildVersion ? ' · build ' + Application.nativeBuildVersion : ''}</Text>
     {release ? <Text style={styles.body}>Version {release.versionName} {status === 'ready' ? 'is ready to install.' : 'is available.'}</Text> : null}
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-    {supported ? <Pressable accessibilityRole="button" disabled={busy} onPress={() => { void (status === 'ready' ? install() : check(true)); }} style={[styles.button, busy && styles.disabled]}><Text style={styles.buttonText}>{labels[status]}</Text></Pressable> : <Text style={styles.body}>Update checks are available in the installed Android release app.</Text>}
+    {supported ? <Pressable accessibilityRole="button" disabled={busy} onPress={() => { void (status === 'ready' ? install() : check(true)); }} style={[status === 'ready' ? styles.button : styles.checkButton, busy && styles.disabled]}><Text style={status === 'ready' ? styles.buttonText : styles.checkText}>{labels[status]}</Text></Pressable> : <Text style={styles.body}>Update checks are available in the installed Android release app.</Text>}
   </View>;
 }
 
@@ -33,7 +33,9 @@ export function AppUpdatePrompt() {
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, marginTop: 24, padding: 20, gap: 12 },
+  card: { marginTop: 24, paddingTop: 16, gap: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  checkButton: { minHeight: 44, alignSelf: 'stretch', justifyContent: 'center', paddingRight: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  checkText: { color: colors.ink, fontSize: 13, fontWeight: '500' },
   heading: { color: colors.ink, fontSize: 15, fontWeight: '600' },
   body: { color: colors.muted, fontSize: 14, lineHeight: 21 },
   error: { color: colors.danger, fontSize: 14, lineHeight: 21 },
