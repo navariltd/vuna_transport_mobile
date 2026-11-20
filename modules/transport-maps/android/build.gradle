@@ -1,0 +1,13 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+group = 'ke.navari.transport.maps'
+version = '1.0.0'
+android {
+  namespace 'ke.navari.transport.maps'
+  defaultConfig { minSdk 24 }
+}
+dependencies {
+  implementation 'com.google.android.libraries.navigation:navigation:8.1.0'
+}

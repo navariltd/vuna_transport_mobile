@@ -53,7 +53,7 @@ test('depot names are used in stop labels', () => {
   assert.equal(model.stopLabel({ vuna_depot_names: 'Ruiru Depot', address_details: { city: 'Ruiru' } }), 'Ruiru Depot · Ruiru');
 });
 
-test('native config keeps app identity and exposes only key-presence flags publicly', () => {
+test('native config preserves identity but ignores all build-time mobile keys', () => {
   const configure = require('../app.config.js');
   const androidName = 'VUNA_TRANSPORT_GOOGLE_MAPS_ANDROID_API_KEY';
   const iosName = 'VUNA_TRANSPORT_GOOGLE_MAPS_IOS_API_KEY';
@@ -64,18 +64,19 @@ test('native config keeps app identity and exposes only key-presence flags publi
     delete process.env[iosName];
     const base = { version: '1.2.3', android: { package: 'ke.navari.vunatransport' }, extra: { router: {} }, plugins: ['expo-router'] };
     const noKeys = configure({ config: base });
-    assert.deepEqual(noKeys.extra.mobileMaps, { googleAndroidConfigured: false, googleIosConfigured: false });
+    assert.equal(noKeys.extra.mobileMaps, undefined);
     process.env[androidName] = 'android-test-key';
     process.env[iosName] = 'ios-test-key';
     const withKeys = configure({ config: base });
     assert.equal(withKeys.android.package, base.android.package);
     assert.equal(withKeys.version, base.version);
-    assert.equal(withKeys.android.config.googleMaps.apiKey, 'android-test-key');
-    assert.equal(withKeys.ios.config.googleMapsApiKey, 'ios-test-key');
-    assert.ok(withKeys.plugins.includes('@googlemaps/react-native-navigation-sdk'));
+    assert.equal(withKeys.android.config.googleMaps, undefined);
+    assert.equal(withKeys.ios.config.googleMapsApiKey, undefined);
+    assert.ok(withKeys.plugins.includes('./plugins/with-runtime-google-maps'));
+    assert.ok(!withKeys.plugins.includes('@googlemaps/react-native-navigation-sdk'));
     assert.ok(!withKeys.plugins.some((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === 'react-native-maps'));
-    assert.deepEqual(withKeys.extra.mobileMaps, { googleAndroidConfigured: true, googleIosConfigured: true });
-    assert.ok(!JSON.stringify(withKeys.extra).includes('test-key'));
+    assert.equal(withKeys.extra.mobileMaps, undefined);
+    assert.ok(!JSON.stringify(withKeys).includes('test-key'));
     assert.equal(withKeys.plugins.filter((plugin) => plugin[0] === 'expo-location').length, 1);
     assert.ok(!JSON.stringify(withKeys).includes('isAndroidBackgroundLocationEnabled'));
   } finally {
@@ -93,7 +94,7 @@ test('SDK 58 native plugins are idempotent and preserve the branded splash and a
   const once = configure({ config: base });
   const twice = configure({ config: once });
   const pluginName = (plugin) => Array.isArray(plugin) ? plugin[0] : plugin;
-  for (const name of ['expo-font', 'expo-secure-store', 'expo-status-bar', 'expo-splash-screen', 'expo-system-ui', 'expo-build-properties', '@googlemaps/react-native-navigation-sdk', 'expo-location']) {
+  for (const name of ['expo-font', 'expo-secure-store', 'expo-status-bar', 'expo-splash-screen', 'expo-system-ui', 'expo-build-properties', './plugins/with-runtime-google-maps', 'expo-location']) {
     assert.equal(twice.plugins.filter((plugin) => pluginName(plugin) === name).length, 1, `${name} must be configured exactly once`);
   }
   const splash = twice.plugins.find((plugin) => pluginName(plugin) === 'expo-splash-screen')[1];

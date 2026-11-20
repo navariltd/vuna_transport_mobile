@@ -1,4 +1,3 @@
-import Constants from 'expo-constants';
 import * as Linking from 'expo-linking';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -13,6 +12,7 @@ import { formatAddress } from './components';
 import { fullscreenMap } from './fullscreen_map_store';
 import { stopCoordinate, stopLabel } from './map_model';
 import type { DeliveryStop } from './types';
+import { CustomerGoogleMaps } from './google_maps_gate';
 
 const NativeNavigation = lazy(() => import('./native_navigation').then((module) => ({ default: module.NativeNavigation })));
 const identity = (session: MobileSession | null) => session ? JSON.stringify([session.siteUrl, session.user, session.sid, session.mapConfig?.provider]) : '';
@@ -55,8 +55,7 @@ export default function NavigationScreen() {
   }, [tripName, stopName, overview]);
 
   const back = () => { if (router.canGoBack()) router.back(); else router.replace(`/trips/${encodeURIComponent(tripName)}` as never); };
-  const configured = Platform.OS === 'android' && Boolean(Constants.expoConfig?.extra?.mobileMaps?.googleAndroidConfigured);
-  const canNavigate = configured && session?.mapConfig?.provider === 'google';
+  const canNavigate = Platform.OS === 'android' && session?.mapConfig?.provider === 'google';
   const external = async () => {
     if (!stop) return;
     const coordinate = stopCoordinate(stop);
@@ -74,9 +73,9 @@ export default function NavigationScreen() {
     </View>
     {error ? <Text accessibilityRole="alert" style={styles.notice}>{error}</Text> : null}
     {!stop && !error ? <View style={styles.loading}><ActivityIndicator color={colors.ink} /><Text style={styles.notice}>Loading stop map…</Text></View> : null}
-    {stop && session ? canNavigate ? <NavigationBoundary key={identity(session)}><Suspense fallback={<Text style={styles.notice}>Loading map…</Text>}>
+    {stop && session ? canNavigate ? <NavigationBoundary key={identity(session)}><CustomerGoogleMaps><Suspense fallback={<Text style={styles.notice}>Loading map…</Text>}>
       <NativeNavigation tripName={tripName} stopName={stopName} stop={stop} previewStops={stops} previewRoute={loadedRoute} onReturn={back} />
-    </Suspense></NavigationBoundary> : <Text style={styles.notice}>In-app Google navigation is not available for this site or app build. You can use external directions and still record proof.</Text> : null}
+    </Suspense></CustomerGoogleMaps></NavigationBoundary> : <Text style={styles.notice}>In-app Google navigation is not available for this site or app build. You can use external directions and still record proof.</Text> : null}
   </SafeAreaView>;
 }
 

@@ -4,6 +4,7 @@ import { Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { fullscreenMap } from './fullscreen_map_store';
 import { colors } from '../../shared/theme';
+import { CustomerGoogleMaps } from './google_maps_gate';
 
 const GoogleTripMap = lazy(() => import('./google_trip_map').then((module) => ({ default: module.GoogleTripMap })));
 
@@ -18,8 +19,8 @@ export default function FullscreenMapScreen() {
     <Pressable accessibilityRole="button" onPress={close}><Text style={{ color: colors.ink }}>Back</Text></Pressable>
   </SafeAreaView>;
   return <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }}>
-    <Suspense fallback={<View style={{ flex: 1 }} />}>
+    <CustomerGoogleMaps><Suspense fallback={<View style={{ flex: 1 }} />}>
       <GoogleTripMap {...current.payload} fullscreen onClose={close} />
-    </Suspense>
+    </Suspense></CustomerGoogleMaps>
   </SafeAreaView>;
 }

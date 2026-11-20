@@ -1,18 +1,18 @@
-import Constants from 'expo-constants';
 import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Linking, Platform, Pressable, Text, View } from 'react-native';
+import { Linking, Pressable, Text, View } from 'react-native';
 import { getSession, subscribeToSessionChange, type MobileSession } from '../../auth/session';
 import { colors } from '../../shared/theme';
 import { mappedStops, type TripMapProps } from './map_model';
 import { OpenStreetTripMap } from './openstreet_trip_map';
 import { getTripRoadRoute } from './api';
 import { parseRoadRoute, type MobileRoadRoute } from './road_route_model';
+import { CustomerGoogleMaps } from './google_maps_gate';
 
 function MapUnavailable(props: TripMapProps) {
   const rows = mappedStops(props.stops);
   const point = (rows.find((row) => row.stop.name === props.activeStop) || rows[0])?.coordinate;
   return <View style={{ height: props.height || 250, padding: 24, justifyContent: 'center', gap: 12, backgroundColor: colors.surface }}>
-    <Text style={{ color: colors.ink }}>Google Maps is not available in this build. Ask your administrator for a configured app update. You can still complete this stop.</Text>
+    <Text style={{ color: colors.ink }}>Google Maps could not load. You can still complete this stop or use external directions.</Text>
     {point ? <Pressable accessibilityRole="link" onPress={() => { void Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${point[1]},${point[0]}`).catch(() => {}); }}><Text style={{ color: colors.ink, textDecorationLine: 'underline' }}>Open directions</Text></Pressable> : null}
   </View>;
 }
@@ -23,7 +23,7 @@ class MapBoundary extends Component<{ children: ReactNode; fallback: ReactNode }
   render() { return this.state.failed ? this.props.fallback : this.props.children; }
 }
 
-// Evaluate the native SDK only after checking build flags, inside the error boundary.
+// Evaluate the native SDK only after configuring the customer's mobile key.
 const NativeGoogleMap = lazy(() => import('./google_trip_map').then((module) => ({ default: module.GoogleTripMap })));
 
 function RouteEnabledGoogleMap(props: TripMapProps) {
@@ -77,8 +77,5 @@ export function TripMap(props: TripMapProps) {
   if (!session) return <View style={{ height: props.height || 250 }} />;
   const provider = session?.mapConfig?.provider || 'openstreetmap';
   if (provider !== 'google') return <OpenStreetTripMap key={`${session?.siteUrl}|${session?.user}|${provider}`} {...props} />;
-  const configuration = Constants.expoConfig?.extra?.mobileMaps;
-  const configured = Platform.OS === 'android' ? configuration?.googleAndroidConfigured === true : Platform.OS === 'ios' && configuration?.googleIosConfigured === true;
-  if (!configured) return <MapUnavailable {...props} />;
-  return <MapBoundary key={`${session?.siteUrl}|${session?.user}|${session?.sid}|${provider}`} fallback={<MapUnavailable {...props} />}><Suspense fallback={<View style={{ height: props.height || 250 }} />}><RouteEnabledGoogleMap {...props} /></Suspense></MapBoundary>;
+  return <MapBoundary key={`${session?.siteUrl}|${session?.user}|${session?.sid}|${provider}`} fallback={<MapUnavailable {...props} />}><CustomerGoogleMaps><Suspense fallback={<View style={{ height: props.height || 250 }} />}><RouteEnabledGoogleMap {...props} /></Suspense></CustomerGoogleMaps></MapBoundary>;
 }

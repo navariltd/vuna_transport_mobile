@@ -9,6 +9,7 @@
     "@maplibre/maplibre-react-native": "^11.5.0",
     "@react-native-community/netinfo": "12.0.1",
     "@vuna-transport/updater": "file:modules/transport-updater",
+    "@vuna-transport/maps": "file:modules/transport-maps",
     "expo": "^58.0.0",
     "expo-application": "~58.1.2",
     "expo-asset": "~58.0.21",
