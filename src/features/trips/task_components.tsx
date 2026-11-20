@@ -1,26 +1,23 @@
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, useFonts } from '@expo-google-fonts/inter';
 import { Ionicons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
-import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatAddress, StatusBadge } from './components';
 import { TripMap } from './trip_map';
 import type { DeliveryStop, TransportTask } from './types';
 import { taskTitle } from './task_model';
 import { colors, radius, spacing } from '../../shared/theme';
+import { useStopNavigation } from './use_stop_navigation';
 
 export function useTaskFonts() {
   return useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
 }
 
 export function StopLocation({ stop, party, tripName }: { stop: DeliveryStop; party?: string; tripName: string }) {
-  const router = useRouter();
+  const navigate = useStopNavigation(tripName, stop);
   const address = formatAddress(stop);
   const phone = stop.contact_details?.mobile_no || stop.contact_details?.phone || stop.address_details?.phone;
   const recipient = [stop.contact_details?.first_name, stop.contact_details?.last_name].filter(Boolean).join(' ') || 'Not provided';
-  const navigate = () => {
-    router.push(`/trips/${encodeURIComponent(tripName)}/navigation/${encodeURIComponent(stop.name)}` as never);
-  };
   return <>
     <View style={taskStyles.map}><TripMap navigationTripName={tripName} stops={[stop]} activeStop={stop.name} height={230} /></View>
     <Text style={taskStyles.place}>{party || stop.vuna_depot_names || stop.location_label || stop.customer || 'Depot'}</Text>

@@ -11,6 +11,7 @@ import { nextStopAction, stopActions, stopActionPath, taskTitle } from '../../..
 import type { DeliveryNoteDetails } from '../../../../../features/trips/types';
 import { loadDeliveryNoteDetails } from '../../../../../offline/trip_repository';
 import { colors, radius, spacing } from '../../../../../shared/theme';
+import { useStopNavigation } from '../../../../../features/trips/use_stop_navigation';
 
 export default function DeliveryNoteScreen() {
   const router = useRouter();
@@ -20,6 +21,7 @@ export default function DeliveryNoteScreen() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const navigate = useStopNavigation(tripName, details?.stop);
 
   const load = useCallback(async () => {
     if (!tripName || !stopName) return;
@@ -53,9 +55,6 @@ export default function DeliveryNoteScreen() {
     stop.can_complete_delivery
     || (details.trip.actual_start && !details.trip.actual_completion && !deliveryRecorded),
   );
-  const navigate = async () => {
-    router.push(`/trips/${encodeURIComponent(tripName)}/navigation/${encodeURIComponent(stopName)}` as never);
-  };
 
   return (
     <View style={styles.screen}>

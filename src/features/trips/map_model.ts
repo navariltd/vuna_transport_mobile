@@ -11,6 +11,16 @@ export type TripMapProps = {
   navigationTripName?: string;
 };
 
+export function stopNavigationTarget(provider: string | undefined, platform: string, tripName: string, stop: DeliveryStop, address: string) {
+  if (provider === 'google' && platform === 'android') {
+    return { kind: 'internal' as const, url: `/trips/${encodeURIComponent(tripName)}/navigation/${encodeURIComponent(stop.name)}` };
+  }
+  const point = stopCoordinate(stop);
+  const destination = point ? `${point[1]},${point[0]}` : address.trim();
+  if (!destination) throw new Error('This stop has no destination coordinates or address.');
+  return { kind: 'external' as const, url: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving&dir_action=navigate` };
+}
+
 // URLs carry identifiers only. Stop details and loaded road geometry remain in
 // the in-memory handoff and are checked against the signed-in trip on opening.
 export function navigationMapPath(props: TripMapProps, mapId: string): string | null {
