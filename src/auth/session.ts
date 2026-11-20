@@ -107,6 +107,22 @@ export async function clearSession() {
   });
 }
 
+export async function clearSessionForSiteChange(siteUrl: string, checkSavedWork: () => Promise<void>, markSetup: () => Promise<void>) {
+  return mutateSession(async () => {
+    const [current, pending] = await Promise.all([getSession(), getPendingSession()]);
+    if ([current, pending].some((value) => value && value.siteUrl !== siteUrl)) {
+      throw new Error('Your connected site changed. Reopen this screen and try again.');
+    }
+    // This also works at login after session expiry, without needing an active
+    // account scope. Failed checks must leave credentials and setup untouched.
+    await checkSavedWork();
+    signInGeneration += 1;
+    await Promise.all([SecureStore.deleteItemAsync(SESSION_KEY), SecureStore.deleteItemAsync(PENDING_SESSION_KEY)]);
+    notifySessionChanged(null);
+    await markSetup();
+  });
+}
+
 export async function getPendingSession(): Promise<MobileSession | null> {
   const value = await SecureStore.getItemAsync(PENDING_SESSION_KEY);
   return value ? JSON.parse(value) : null;

@@ -48,6 +48,69 @@ function setup() {
   return { api, storage, replies, calls };
 }
 
+test('changing site clears active and pending credentials only after saved-work checks', async () => {
+  const { api, storage } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  storage.set(pendingKey, JSON.stringify(session));
+  const events = [];
+  api.subscribeToSessionChange((next) => events.push(next));
+  let setupRequired = false;
+  await api.clearSessionForSiteChange(session.siteUrl, async () => {
+    assert.ok(storage.has(sessionKey));
+    assert.ok(storage.has(pendingKey));
+  }, async () => {
+    assert.equal(await api.getSession(), null);
+    assert.equal(await api.getPendingSession(), null);
+    setupRequired = true;
+  });
+  assert.equal(setupRequired, true);
+  assert.deepEqual(events, [null]);
+});
+
+test('unsynced work or a failed database check preserves credentials and setup', async () => {
+  for (const message of ['Pending work', 'Database unavailable']) {
+    const { api, storage } = setup();
+    storage.set(sessionKey, JSON.stringify(session));
+    storage.set(pendingKey, JSON.stringify(session));
+    let changed = false;
+    await assert.rejects(api.clearSessionForSiteChange(session.siteUrl, async () => { throw new Error(message); }, async () => { changed = true; }));
+    assert.equal(changed, false);
+    assert.equal((await api.getSession()).sid, session.sid);
+    assert.equal((await api.getPendingSession()).sid, session.sid);
+  }
+});
+
+test('site switching can run after session expiry or while device approval is pending', async () => {
+  for (const pending of [false, true]) {
+    const { api, storage } = setup();
+    if (pending) storage.set(pendingKey, JSON.stringify(session));
+    let checked = false, marked = false;
+    await api.clearSessionForSiteChange(session.siteUrl, async () => { checked = true; }, async () => { marked = true; });
+    assert.equal(checked && marked, true);
+    assert.equal(await api.getPendingSession(), null);
+  }
+});
+
+test('a stale site-change action cannot sign out a newer customer account', async () => {
+  const { api, storage } = setup();
+  storage.set(sessionKey, JSON.stringify({ ...session, siteUrl: 'https://new-customer.test' }));
+  await assert.rejects(api.clearSessionForSiteChange(session.siteUrl, async () => assert.fail('Must not check another site'), async () => assert.fail('Must not reset another site')));
+  assert.equal((await api.getSession()).siteUrl, 'https://new-customer.test');
+});
+
+test('a late sign-in response cannot restore the old account after changing site', async () => {
+  const { api, replies } = setup();
+  let finish;
+  replies.push(response(200, {}), () => new Promise((resolve) => { finish = resolve; }));
+  const signIn = api.loginAndRegisterDevice(session.siteUrl, session.user, 'password', device);
+  const rejected = assert.rejects(signIn, api.MobileAccessError);
+  await new Promise(setImmediate);
+  await api.clearSessionForSiteChange(session.siteUrl, async () => {}, async () => {});
+  finish(response(200, { message: { allowed: true } }));
+  await rejected;
+  assert.equal(await api.getSession(), null);
+});
+
 test('mobile map preferences accept only the credential-free supported contract', () => {
   const { api } = setup();
   const safe = api.normalizeMobileMapConfiguration({ version: 1, selection: 'Automatic', provider: 'google', api_key: 'must-not-be-stored' });

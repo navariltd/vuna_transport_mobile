@@ -16,12 +16,21 @@ export type OnboardingRecord = {
   osName: string | null;
   osVersion: string | null;
   capturedAt: string;
+  requiresSiteSetup?: boolean;
 };
 
 export async function getOnboardingRecord(): Promise<OnboardingRecord | null> {
   if (Platform.OS === 'web') return null;
   const value = await SecureStore.getItemAsync(ONBOARDING_KEY);
   return value ? (JSON.parse(value) as OnboardingRecord) : null;
+}
+
+export async function markSiteSetupRequired(expectedSiteUrl: string) {
+  const record = await getOnboardingRecord();
+  if (!record || record.siteUrl !== expectedSiteUrl) throw new Error('The connected site changed. Reopen this screen and try again.');
+  // Keep the installation identity and original URL for recovery; setup saves
+  // a new record and removes this flag only after the replacement URL is valid.
+  await SecureStore.setItemAsync(ONBOARDING_KEY, JSON.stringify({ ...record, requiresSiteSetup: true }));
 }
 
 export async function saveOnboardingRecord(siteUrl: string): Promise<OnboardingRecord> {
