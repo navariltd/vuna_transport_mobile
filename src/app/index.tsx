@@ -1,6 +1,6 @@
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, useFonts } from '@expo-google-fonts/inter';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -12,6 +12,7 @@ const muted = '#6B6B6B';
 const paper = '#F7F7F5';
 
 export default function OnboardingScreen() {
+  const router = useRouter();
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
   const [siteUrl, setSiteUrl] = useState('');
   const [error, setError] = useState('');
@@ -26,11 +27,12 @@ export default function OnboardingScreen() {
       try {
         const [record, session, pending] = await Promise.all([getOnboardingRecord(), getSession(), getPendingSession()]);
         if (!active) return;
-        if (record) {
+        if (record && !record.requiresSiteSetup) {
           if (session?.siteUrl === record.siteUrl) router.replace('/dashboard');
           else router.replace({ pathname: '/login', params: pending ? { reason: 'device' } : {} });
           return;
         }
+        setSiteUrl(record?.siteUrl || '');
         setCheckingSetup(false);
       } catch {
         if (active) setCheckingSetup(false);
@@ -38,7 +40,7 @@ export default function OnboardingScreen() {
     };
     void restoreSetup();
     return () => { active = false; };
-  }, []);
+  }, [router]);
   if (!fontsLoaded || checkingSetup) return <ActivityIndicator color={ink} style={styles.loader} />;
 
   const validHttpsUrl = (value: string) => {

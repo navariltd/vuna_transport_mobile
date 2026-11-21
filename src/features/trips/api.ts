@@ -52,6 +52,22 @@ export async function getTripDetails(tripName: string): Promise<{ trip: Delivery
   );
 }
 
+export async function getTripRoadRoute(tripName: string): Promise<unknown> {
+  return callMobileMethod('vuna_transport.api.get_mobile_trip_road_route',
+    { ...(await deviceArgs()), trip_name: tripName }, 'Could not show the road route. You can still complete your stops.', 180000);
+}
+
+export async function getMobileGoogleMapsKey(platform: string): Promise<unknown> {
+  return callMobileMethod('vuna_transport.api.get_mobile_google_maps_key',
+    { ...(await deviceArgs()), platform }, 'Could not load your company’s mobile Google Maps configuration.');
+}
+
+// Authorization is live, never cached or placed in the offline outbox.
+export async function getNavigationDestination(tripName: string, stopName: string, start = false): Promise<unknown> {
+  return callMobileMethod(start ? 'vuna_transport.api.start_mobile_navigation' : 'vuna_transport.api.get_mobile_navigation_destination',
+    { ...(await deviceArgs()), trip_name: tripName, stop_name: stopName }, 'In-app navigation is unavailable. You can still complete this stop.');
+}
+
 export async function startDeliveryTrip(tripName: string): Promise<{ trip: DeliveryTrip }> {
   return callMobileMethod(
     'vuna_transport.api.start_mobile_trip',

@@ -48,6 +48,123 @@ function setup() {
   return { api, storage, replies, calls };
 }
 
+test('changing site clears active and pending credentials only after saved-work checks', async () => {
+  const { api, storage } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  storage.set(pendingKey, JSON.stringify(session));
+  const events = [];
+  api.subscribeToSessionChange((next) => events.push(next));
+  let setupRequired = false;
+  await api.clearSessionForSiteChange(session.siteUrl, async () => {
+    assert.ok(storage.has(sessionKey));
+    assert.ok(storage.has(pendingKey));
+  }, async () => {
+    assert.equal(await api.getSession(), null);
+    assert.equal(await api.getPendingSession(), null);
+    setupRequired = true;
+  });
+  assert.equal(setupRequired, true);
+  assert.deepEqual(events, [null]);
+});
+
+test('unsynced work or a failed database check preserves credentials and setup', async () => {
+  for (const message of ['Pending work', 'Database unavailable']) {
+    const { api, storage } = setup();
+    storage.set(sessionKey, JSON.stringify(session));
+    storage.set(pendingKey, JSON.stringify(session));
+    let changed = false;
+    await assert.rejects(api.clearSessionForSiteChange(session.siteUrl, async () => { throw new Error(message); }, async () => { changed = true; }));
+    assert.equal(changed, false);
+    assert.equal((await api.getSession()).sid, session.sid);
+    assert.equal((await api.getPendingSession()).sid, session.sid);
+  }
+});
+
+test('site switching can run after session expiry or while device approval is pending', async () => {
+  for (const pending of [false, true]) {
+    const { api, storage } = setup();
+    if (pending) storage.set(pendingKey, JSON.stringify(session));
+    let checked = false, marked = false;
+    await api.clearSessionForSiteChange(session.siteUrl, async () => { checked = true; }, async () => { marked = true; });
+    assert.equal(checked && marked, true);
+    assert.equal(await api.getPendingSession(), null);
+  }
+});
+
+test('a stale site-change action cannot sign out a newer customer account', async () => {
+  const { api, storage } = setup();
+  storage.set(sessionKey, JSON.stringify({ ...session, siteUrl: 'https://new-customer.test' }));
+  await assert.rejects(api.clearSessionForSiteChange(session.siteUrl, async () => assert.fail('Must not check another site'), async () => assert.fail('Must not reset another site')));
+  assert.equal((await api.getSession()).siteUrl, 'https://new-customer.test');
+});
+
+test('a late sign-in response cannot restore the old account after changing site', async () => {
+  const { api, replies } = setup();
+  let finish;
+  replies.push(response(200, {}), () => new Promise((resolve) => { finish = resolve; }));
+  const signIn = api.loginAndRegisterDevice(session.siteUrl, session.user, 'password', device);
+  const rejected = assert.rejects(signIn, api.MobileAccessError);
+  await new Promise(setImmediate);
+  await api.clearSessionForSiteChange(session.siteUrl, async () => {}, async () => {});
+  finish(response(200, { message: { allowed: true } }));
+  await rejected;
+  assert.equal(await api.getSession(), null);
+});
+
+test('mobile map preferences accept only the credential-free supported contract', () => {
+  const { api } = setup();
+  const safe = api.normalizeMobileMapConfiguration({ version: 1, selection: 'Automatic', provider: 'google', api_key: 'must-not-be-stored' });
+  assert.equal(JSON.stringify(safe), JSON.stringify({ version: 1, selection: 'Automatic', provider: 'google' }));
+  for (const value of [null, {}, { version: 2, selection: 'Automatic', provider: 'google' }, { version: 1, selection: 'Google Maps', provider: 'openstreetmap' }, { version: 1, selection: 'OpenStreetMap', provider: 'google' }, { version: 1, selection: 'Automatic', provider: 'unknown' }]) {
+    assert.equal(api.normalizeMobileMapConfiguration(value), null);
+  }
+});
+
+test('login caches map preferences without exposing backend credentials', async () => {
+  const { api, storage, replies } = setup();
+  replies.push(response(200, {}), response(200, { message: { allowed: true, map_config: { version: 1, selection: 'Automatic', provider: 'google', api_key: 'private-key' } } }));
+  await api.loginAndRegisterDevice(session.siteUrl, session.user, 'password', device);
+  assert.equal((await api.getSession()).mapConfig.provider, 'google');
+  assert.ok(!storage.get(sessionKey).includes('private-key'));
+});
+
+test('offline work refresh changes provider and notifies mounted maps', async () => {
+  const { api, storage, replies } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  const changes = [];
+  const unsubscribe = api.subscribeToSessionChange((next) => changes.push(next));
+  replies.push(response(200, { message: { map_config: { version: 1, selection: 'OpenStreetMap', provider: 'openstreetmap' } } }));
+  await api.getOfflineWork('installation-one');
+  assert.equal(changes[0].mapConfig.provider, 'openstreetmap');
+  assert.equal((await api.getSession()).mapConfig.provider, 'openstreetmap');
+  await api.clearSession();
+  assert.equal(changes[1], null);
+  unsubscribe();
+});
+
+test('late successful map response cannot change a newer site or cache its work', async () => {
+  const { api, storage, replies } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  let finish;
+  replies.push(() => new Promise((resolve) => { finish = resolve; }));
+  const request = api.getOfflineWork('installation-one');
+  const rejected = assert.rejects(request, api.MobileAccessError);
+  await new Promise(setImmediate);
+  const newer = { ...session, siteUrl: 'https://another.test', mapConfig: { version: 1, selection: 'OpenStreetMap', provider: 'openstreetmap' } };
+  storage.set(sessionKey, JSON.stringify(newer));
+  finish(response(200, { message: { map_config: { version: 1, selection: 'Automatic', provider: 'google' } } }));
+  await rejected;
+  assert.equal(storage.get(sessionKey), JSON.stringify(newer));
+});
+
+test('new login without map preferences does not inherit the old site preference', async () => {
+  const { api, storage, replies } = setup();
+  storage.set(sessionKey, JSON.stringify({ ...session, mapConfig: { version: 1, selection: 'Automatic', provider: 'google' } }));
+  replies.push(response(200, {}), response(200, { message: { allowed: true } }));
+  await api.loginAndRegisterDevice('https://another.test', 'another@example.test', 'password', device);
+  assert.equal((await api.getSession()).mapConfig, undefined);
+});
+
 test('pending approval is isolated from the active session and can be refreshed', async () => {
   const { api, storage, replies, calls } = setup();
   replies.push(response(200, {}), response(200, { message: { allowed: false, message: 'Awaiting approval' } }));
@@ -117,6 +234,93 @@ test('ordinary permission failures do not sign out the user', async () => {
   replies.push(response(403, { exc_type: 'PermissionError', exc: 'denied', _server_messages: JSON.stringify([JSON.stringify({ message: 'Not permitted' })]) }));
   await assert.rejects(api.getOfflineWork('installation-one'), /Not permitted/);
   assert.ok(await api.getSession());
+});
+
+function guestWhitelistResponse() {
+  return response(403, {
+    exc_type: 'PermissionError', exc: 'PermissionError',
+    _server_messages: JSON.stringify([JSON.stringify({ message: '<details><summary>You are not permitted to access this resource. Login to access</summary>Function <strong>vuna_transport.api.get_mobile_offline_work</strong> is not whitelisted.</details>' })]),
+  });
+}
+
+test('Guest whitelist denial confirms expiry and redirects without deleting saved work', async () => {
+  const { api, storage, replies, calls } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  storage.set('offline-proof', 'unsynced work');
+  const reasons = [];
+  api.subscribeToSessionInterruption((reason) => reasons.push(reason));
+  replies.push(guestWhitelistResponse(), guestWhitelistResponse());
+  await assert.rejects(api.getOfflineWork('installation-one'), (error) => error instanceof api.MobileAccessError && error.reason === 'expired');
+  assert.equal(await api.getSession(), null);
+  assert.equal(storage.get('offline-proof'), 'unsynced work');
+  assert.deepEqual(reasons, ['expired']);
+  assert.equal(calls[1][0], `${session.siteUrl}/api/method/frappe.auth.get_logged_user`);
+  assert.equal(calls[1][1].headers.Cookie, `sid=${session.sid}`);
+});
+
+test('an unavailable endpoint does not sign out a still-authenticated user', async () => {
+  const { api, storage, replies } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  replies.push(guestWhitelistResponse(), response(200, { message: session.user }));
+  await assert.rejects(api.getOfflineWork('installation-one'), api.MobileRequestError);
+  assert.ok(await api.getSession());
+});
+
+test('failed session verification preserves credentials for offline work', async () => {
+  const { api, storage, replies } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  replies.push(guestWhitelistResponse(), () => { throw new TypeError('offline'); });
+  await assert.rejects(api.getOfflineWork('installation-one'), api.isConnectivityFailure);
+  assert.ok(await api.getSession());
+});
+
+test('late Guest confirmation cannot sign out a newer login', async () => {
+  const { api, storage, replies } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  let finish;
+  replies.push(guestWhitelistResponse(), () => new Promise((resolve) => { finish = resolve; }));
+  const request = api.getOfflineWork('installation-one');
+  const rejected = assert.rejects(request, api.MobileAccessError);
+  while (!finish) await new Promise(setImmediate);
+  storage.set(sessionKey, JSON.stringify({ ...session, sid: 'new-session' }));
+  finish(guestWhitelistResponse());
+  await rejected;
+  assert.equal((await api.getSession()).sid, 'new-session');
+});
+
+test('expired pending device approval also handles Guest whitelist errors', async () => {
+  const { api, storage, replies } = setup();
+  storage.set(pendingKey, JSON.stringify(session));
+  replies.push(guestWhitelistResponse(), response(401, {}));
+  await assert.rejects(api.refreshDeviceRegistration(device), (error) => error.reason === 'expired');
+  assert.equal(await api.getPendingSession(), null);
+});
+
+test('a Guest identity response confirms that sign-in is required', async () => {
+  const { api, storage, replies } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  replies.push(guestWhitelistResponse(), response(200, { message: 'Guest' }));
+  await assert.rejects(api.getOfflineWork('installation-one'), (error) => error.reason === 'expired');
+  assert.equal(await api.getSession(), null);
+});
+
+test('concurrent Guest failures share a verification request and redirect only once', async () => {
+  const { api, storage, replies, calls } = setup();
+  storage.set(sessionKey, JSON.stringify(session));
+  let finish;
+  replies.push(guestWhitelistResponse(), guestWhitelistResponse(), () => new Promise((resolve) => { finish = resolve; }));
+  const reasons = [];
+  api.subscribeToSessionInterruption((reason) => reasons.push(reason));
+  const results = Promise.allSettled([api.getOfflineWork('installation-one'), api.getDriverProfile('installation-one')]);
+  while (!finish) await new Promise(setImmediate);
+  await new Promise(setImmediate);
+  finish(response(401, {}));
+  for (const result of await results) {
+    assert.equal(result.status, 'rejected');
+    assert.equal(result.reason.reason, 'expired');
+  }
+  assert.equal(calls.filter(([url]) => url.endsWith('/frappe.auth.get_logged_user')).length, 1);
+  assert.deepEqual(reasons, ['expired']);
 });
 
 test('a missing driver link is not treated as device revocation', async () => {

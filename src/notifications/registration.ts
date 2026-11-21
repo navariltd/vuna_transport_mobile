@@ -1,5 +1,6 @@
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
+import { AndroidImportance } from 'expo-notifications';
 import { Platform } from 'react-native';
 import { callMobileMethod } from '../auth/session';
 import { getOnboardingRecord } from '../storage/onboarding';
@@ -23,7 +24,7 @@ export async function registerPushNotifications() {
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('transport', {
       name: 'Transport updates',
-      importance: Notifications.AndroidImportance.DEFAULT,
+      importance: AndroidImportance.DEFAULT,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#111111',
     });

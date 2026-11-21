@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, useFonts } from '@expo-google-fonts/inter';
 import * as Linking from 'expo-linking';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -11,14 +11,17 @@ import { nextStopAction, stopActions, stopActionPath, taskTitle } from '../../..
 import type { DeliveryNoteDetails } from '../../../../../features/trips/types';
 import { loadDeliveryNoteDetails } from '../../../../../offline/trip_repository';
 import { colors, radius, spacing } from '../../../../../shared/theme';
+import { useStopNavigation } from '../../../../../features/trips/use_stop_navigation';
 
 export default function DeliveryNoteScreen() {
+  const router = useRouter();
   const { tripName, stopName } = useLocalSearchParams<{ tripName: string; stopName: string }>();
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
   const [details, setDetails] = useState<DeliveryNoteDetails | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const navigate = useStopNavigation(tripName, details?.stop);
 
   const load = useCallback(async () => {
     if (!tripName || !stopName) return;
@@ -52,15 +55,12 @@ export default function DeliveryNoteScreen() {
     stop.can_complete_delivery
     || (details.trip.actual_start && !details.trip.actual_completion && !deliveryRecorded),
   );
-  const navigate = async () => {
-    const query = stop.lat && stop.lng ? `${stop.lat},${stop.lng}` : address;
-    if (query) await Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`);
-  };
 
   return (
     <View style={styles.screen}>
       <StatusBar style="dark" />
       <ScrollView
+        removeClippedSubviews={false}
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={colors.ink} />}
       >
@@ -68,7 +68,7 @@ export default function DeliveryNoteScreen() {
         {stop.unplanned_pickups_enabled || Boolean(stop.unplanned_collection_count) ? <Pressable onPress={() => router.push(`/trips/${encodeURIComponent(tripName)}/collections/${encodeURIComponent(stopName)}` as never)} style={styles.outlineButton}>
           <Ionicons color={colors.ink} name="cube-outline" size={19} /><Text style={styles.outlineText}>{stop.unplanned_pickups_enabled ? 'Unplanned collections' : 'Collection history'}</Text>
         </Pressable> : null}
-        <View style={styles.map}><TripMap activeStop={stop.name} height={240} stops={[stop]} /></View>
+        <View style={styles.map}><TripMap navigationTripName={tripName} activeStop={stop.name} height={240} stops={[stop]} /></View>
         <View style={styles.titleRow}>
           <View style={styles.titleCopy}><Text style={styles.noteName}>{note.name}</Text><Text style={styles.customer}>{note.customer_name || note.customer}</Text></View>
           <StatusBadge status={stop.delivery_status || note.status} />

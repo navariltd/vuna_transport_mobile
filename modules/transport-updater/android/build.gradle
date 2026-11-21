@@ -3,6 +3,9 @@ plugins {
   id 'expo-module-gradle-plugin'
 }
 
+group = 'ke.navari.transport.updater'
+version = '1.0.0'
+
 android {
   namespace 'ke.navari.transport.updater'
   defaultConfig {

@@ -1,0 +1,5 @@
+{
+  "platforms": ["android", "apple"],
+  "android": { "modules": ["ke.navari.transport.maps.TransportMapsModule"] },
+  "apple": { "modules": ["TransportMapsModule"] }
+}

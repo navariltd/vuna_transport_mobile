@@ -1,18 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, useFonts } from '@expo-google-fonts/inter';
-import { LocationManager } from '@maplibre/maplibre-react-native';
 import * as Crypto from 'expo-crypto';
 import { useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import { ScreenHeader, StateView } from '../../../features/trips/components';
 import { TaskErrorBanner } from '../../../features/requests/components';
 import { getTripIncidents, reportTripIncident, resolveTripIncident } from '../../../features/trips/api';
 import type { MobileTripIncidents, VehicleIncidentSummary } from '../../../features/trips/types';
 import { colors, radius, spacing } from '../../../shared/theme';
+import { captureDeviceLocation, type DeviceLocation } from '../../../shared/device_location';
 
-type Coordinate = { latitude: number; longitude: number };
 
 export default function TripIncidentsScreen() {
   const { tripName } = useLocalSearchParams<{ tripName: string }>();
@@ -29,8 +29,8 @@ export default function TripIncidentsScreen() {
   const [vehicleImmobilized, setVehicleImmobilized] = useState(false);
   const [cargoAffected, setCargoAffected] = useState(false);
   const [driverAffected, setDriverAffected] = useState(false);
-  const [coordinate, setCoordinate] = useState<Coordinate | null>(null);
-  const contentRef = useRef<ScrollView>(null);
+  const locationEvidence = useRef<DeviceLocation | null>(null);
+  const contentRef = useRef<ScrollViewInstance>(null);
   const [resolving, setResolving] = useState<VehicleIncidentSummary | null>(null);
   const [resolution, setResolution] = useState('');
   const requestId = useRef(Crypto.randomUUID());
@@ -53,14 +53,6 @@ export default function TripIncidentsScreen() {
     if (error && !resolving) requestAnimationFrame(() => contentRef.current?.scrollTo({ y: 0, animated: true }));
   }, [error, resolving]);
 
-  const attachCurrentLocation = async () => {
-    const allowed = await LocationManager.requestPermissions();
-    if (!allowed) return setError('Allow location access to attach your current position.');
-    const position = await LocationManager.getCurrentPosition();
-    if (!position) return setError('Your current location is not available yet.');
-    setCoordinate({ latitude: position.coords.latitude, longitude: position.coords.longitude });
-  };
-
   const submitIncident = async () => {
     if (!tripName || submitting) return;
     if (!incidentType) return setError('Select what happened.');
@@ -68,13 +60,14 @@ export default function TripIncidentsScreen() {
     setSubmitting(true);
     setError('');
     try {
+      // An uncertain network response must not move this incident to the retry location.
+      locationEvidence.current ||= await captureDeviceLocation();
       await reportTripIncident(tripName, {
         cargo_affected: cargoAffected,
         description,
         driver_affected: driverAffected,
         incident_type: incidentType,
-        latitude: coordinate?.latitude,
-        longitude: coordinate?.longitude,
+        device_location: locationEvidence.current,
         request_id: requestId.current,
         severity,
         vehicle_immobilized: vehicleImmobilized,
@@ -87,7 +80,7 @@ export default function TripIncidentsScreen() {
       setVehicleImmobilized(false);
       setCargoAffected(false);
       setDriverAffected(false);
-      setCoordinate(null);
+      locationEvidence.current = null;
       await load();
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : 'Could not report the Vehicle Incident.');
@@ -144,7 +137,7 @@ export default function TripIncidentsScreen() {
           <Toggle label="Cargo affected" onPress={() => setCargoAffected((value) => !value)} selected={cargoAffected} />
           <Toggle label="Driver affected" onPress={() => setDriverAffected((value) => !value)} selected={driverAffected} />
         </View>
-        <Pressable onPress={() => void attachCurrentLocation()} style={styles.locationButton}><Ionicons color={colors.ink} name={coordinate ? 'checkmark-circle' : 'locate-outline'} size={19} /><Text style={styles.locationText}>{coordinate ? 'Current location attached' : 'Attach current location'}</Text></Pressable>
+        <Text style={styles.locationText}>Current location is recorded automatically when available.</Text>
         <Pressable disabled={submitting} onPress={() => void submitIncident()} style={[styles.submitButton, submitting && styles.disabled]}><Text style={styles.submitText}>{submitting ? 'Reporting…' : 'Report incident'}</Text></Pressable>
       </View> : null}
 

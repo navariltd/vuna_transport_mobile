@@ -7,21 +7,19 @@ import { TripMap } from './trip_map';
 import type { DeliveryStop, TransportTask } from './types';
 import { taskTitle } from './task_model';
 import { colors, radius, spacing } from '../../shared/theme';
+import { useStopNavigation } from './use_stop_navigation';
 
 export function useTaskFonts() {
   return useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
 }
 
-export function StopLocation({ stop, party }: { stop: DeliveryStop; party?: string }) {
+export function StopLocation({ stop, party, tripName }: { stop: DeliveryStop; party?: string; tripName: string }) {
+  const navigate = useStopNavigation(tripName, stop);
   const address = formatAddress(stop);
   const phone = stop.contact_details?.mobile_no || stop.contact_details?.phone || stop.address_details?.phone;
   const recipient = [stop.contact_details?.first_name, stop.contact_details?.last_name].filter(Boolean).join(' ') || 'Not provided';
-  const navigate = () => {
-    const location = stop.lat && stop.lng ? `${stop.lat},${stop.lng}` : address;
-    if (location) void Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`);
-  };
   return <>
-    <View style={taskStyles.map}><TripMap stops={[stop]} activeStop={stop.name} height={230} /></View>
+    <View style={taskStyles.map}><TripMap navigationTripName={tripName} stops={[stop]} activeStop={stop.name} height={230} /></View>
     <Text style={taskStyles.place}>{party || stop.vuna_depot_names || stop.location_label || stop.customer || 'Depot'}</Text>
     <View style={taskStyles.addressCard}>
       <Ionicons name="location-outline" size={24} color={colors.ink} />

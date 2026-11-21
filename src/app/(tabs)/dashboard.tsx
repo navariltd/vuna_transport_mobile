@@ -1,6 +1,6 @@
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, useFonts } from '@expo-google-fonts/inter';
 import { Ionicons } from '@expo/vector-icons';
-import { router, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -13,6 +13,7 @@ import { colors } from '../../shared/theme';
 import { getOnboardingRecord } from '../../storage/onboarding';
 
 export default function DashboardScreen() {
+  const router = useRouter();
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
   const [driverName, setDriverName] = useState('');
   const [message, setMessage] = useState('Your assigned trips will appear here.');
@@ -41,7 +42,7 @@ export default function DashboardScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [router]);
 
   useFocusEffect(useCallback(() => {
     void loadProfile();
@@ -153,6 +154,7 @@ function DashboardSkeleton() {
 }
 
 function TripCard({ trip }: { trip: DeliveryTrip }) {
+  const router = useRouter();
   return <Pressable onPress={() => router.push(`/trips/${encodeURIComponent(trip.name)}` as never)} style={styles.tripCard}>
     <View style={styles.tripBody}>
       <View style={styles.vehicleRow}>

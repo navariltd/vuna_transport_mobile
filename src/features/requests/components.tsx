@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useEffect, useRef } from 'react';
+import type { ScrollViewInstance } from 'react-native';
 import { ScreenHeader, StateView } from '../trips/components';
 import { colors, radius, spacing } from '../../shared/theme';
 
@@ -18,7 +19,7 @@ export function RequestScreen({
   loading?: boolean;
   title: string;
 }) {
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const scrollYRef = useRef(0);
 
   useEffect(() => {

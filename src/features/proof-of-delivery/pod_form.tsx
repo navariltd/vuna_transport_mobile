@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import { FieldError, TaskErrorBanner } from '../requests/components';
 import { ScreenHeader, Section } from '../trips/components';
@@ -30,7 +31,7 @@ export function PODForm({ initial, initialSignature, initialPhoto, queuedStatus,
   const [error, setError] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const locked = useRef(false);
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
   const pickup = draft.mode === 'pickup';
   const title = pickup ? 'Proof of Pickup' : 'Proof of Delivery';
   useEffect(() => { if (error) requestAnimationFrame(() => scroll.current?.scrollTo({ y: 0, animated: true })); }, [error]);
@@ -83,7 +84,7 @@ export function PODForm({ initial, initialSignature, initialPhoto, queuedStatus,
       {error ? <TaskErrorBanner title="Check this proof" message={error} /> : null}
       {queuedStatus ? <View style={styles.notice}><Text style={styles.label}>Saved on this device · {queuedStatus}</Text><Text style={styles.muted}>Stock and trip completion are only confirmed after synchronization.</Text></View> : null}
       <Text style={styles.party}>{draft.party}</Text><Text style={styles.muted}>{draft.reference}</Text>
-      <Text style={styles.muted}>Receipt time is recorded automatically when submitted.</Text>
+      <Text style={styles.muted}>Time and current location are recorded automatically when available.</Text>
       <View style={styles.outcomes}>
         <Pressable onPress={() => outcome(true)} style={styles.outcome}><Ionicons name="checkmark-circle-outline" size={22} color={colors.success} /><Text style={styles.label}>{pickup ? 'Collect all' : 'Accept all'}</Text></Pressable>
         <Pressable onPress={() => outcome(false)} style={styles.outcome}><Ionicons name="close-circle-outline" size={22} color={colors.danger} /><Text style={styles.label}>{pickup ? 'Collect none' : 'Reject all'}</Text></Pressable>

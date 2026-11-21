@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
@@ -8,6 +8,7 @@ import { colors, radius, spacing } from '../../shared/theme';
 import type { DeliveryStop } from './types';
 
 export function ScreenHeader({ title, back = false, right }: { title: string; back?: boolean; right?: ReactNode }) {
+  const router = useRouter();
   return (
     <View style={styles.header}>
       {back ? (

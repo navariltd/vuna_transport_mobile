@@ -7,6 +7,14 @@ import { spawnSync } from 'node:child_process';
 
 import { prepareAndroidRelease, releaseConfigurationBlock } from "../prepare-android-release.mjs";
 
+test('local updater declares the module version required by Expo SDK 58', async () => {
+  const source = await readFile(new URL('../../modules/transport-updater/android/build.gradle', import.meta.url), 'utf8');
+  const metadata = JSON.parse(await readFile(new URL('../../modules/transport-updater/package.json', import.meta.url), 'utf8'));
+  const declared = source.match(/^version = '([^']+)'/m);
+  assert.ok(declared, 'Expo module project.version must be declared');
+  assert.equal(declared[1], metadata.version);
+});
+
 test("release Gradle configuration runs before variant configuration", () => {
   const block = releaseConfigurationBlock();
 
