@@ -6,6 +6,7 @@ import { FieldError, OptionList, RequestScreen, SubmitButton, requestStyles as s
 import { getCollectionSetup, getTripDetails, getUnplannedCollections, reportUnplannedCollection, searchCollectionItems } from '../../../../features/trips/api';
 import type { CollectionItemOption, CollectionRecord } from '../../../../features/trips/api';
 import { captureDeviceLocation, type DeviceLocation } from '../../../../shared/device_location';
+import { collectionLimit, collectionUoms, collectionUomFactor, convertCollectionQuantity, validateCollectionQuantity } from '../../../../features/trips/collection_uom';
 
 type Line = { id: string; item?: CollectionItemOption; qty: string; uom: string; batch: string; serials: string };
 const newLine = (): Line => ({ id: Crypto.randomUUID(), qty: '', uom: '', batch: '', serials: '' });
@@ -28,6 +29,7 @@ export default function CollectionsScreen() {
   const [reason, setReason] = useState('');
   const [lines, setLines] = useState<Line[]>(() => [newLine()]);
   const [open, setOpen] = useState<string | null>(null);
+  const [unitOpen, setUnitOpen] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [options, setOptions] = useState<CollectionItemOption[]>([]);
   const [searching, setSearching] = useState(false);
@@ -53,10 +55,11 @@ export default function CollectionsScreen() {
     return () => { alive = false; };
   }, [tripName, stopName]);
 
-  const clearSourceItems = () => { setLoadedReference(''); setOptions([]); setLines([newLine()]); setOpen(null); setErrors({}); };
+  const clearSourceItems = () => { setLoadedReference(''); setOptions([]); setLines([newLine()]); setOpen(null); setUnitOpen(null); setErrors({}); };
   const loadReference = async () => {
     if (!referenceName.trim()) { setErrors((current) => ({ ...current, reference: `Enter the ${referenceType} number.` })); return; }
     setSearching(true); setError(''); setOptions([]); setLoadedReference(''); setLines([newLine()]); setOpen(null);
+    setUnitOpen(null);
     try {
       const items = await searchCollectionItems(tripName, stopName, referenceType, referenceName.trim());
       setOptions(items); setLoadedReference(referenceName.trim()); setErrors({});
@@ -76,8 +79,9 @@ export default function CollectionsScreen() {
     if (!releasedBy.trim()) next.releasedBy = 'Enter who released the goods.';
     if (!reason.trim()) next.reason = 'Explain why these goods were collected.';
     lines.forEach((line) => {
+      const quantityError = line.item ? validateCollectionQuantity(line.item, line.qty, line.uom) : null;
       if (!line.item || !Number.isFinite(Number(line.qty)) || Number(line.qty) <= 0) next[line.id] = 'Select an item and enter a positive quantity.';
-      else if (Number(line.qty) > line.item.qty) next[line.id] = 'Quantity cannot exceed this reference row/batch quantity.';
+      else if (quantityError) next[line.id] = quantityError;
       else if (line.item.has_batch_no && !line.batch.trim()) next[line.id] = 'Enter the batch number. Use a separate row for each batch.';
       else if (line.item.has_serial_no && !line.serials.trim()) next[line.id] = 'Enter the collected serial numbers.';
     });
@@ -96,6 +100,7 @@ export default function CollectionsScreen() {
       requestId.current = Crypto.randomUUID();
       locationEvidence.current = null;
       setLines([newLine()]); setReason(''); setReleasedBy(''); setOpen(null);
+      setUnitOpen(null);
     } catch (exception) { setError(exception instanceof Error ? exception.message : 'Could not record collection.'); }
     finally { setBusy(false); }
   };
@@ -129,16 +134,26 @@ export default function CollectionsScreen() {
           <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled" style={{ maxHeight: 180 }}>
             <OptionList emptyText="No matching items in this reference." options={filteredOptions.map((item) => ({ label: `${item.name} — ${item.item_name}${item.batch_no ? ` · Batch ${item.batch_no}` : ''}`, detail: `Row ${item.row_idx} · Source quantity: ${item.qty} ${item.uom}`, value: item.key }))} onSelect={(key) => {
               const item = options.find((option) => option.key === key);
-              update(line.id, { item, uom: item?.uom || '', batch: item?.batch_no || '', serials: item?.serial_no || '' }); setOpen(null);
+              const units = item ? collectionUoms(item) : [];
+              const uom = item && units.includes(item.uom) ? item.uom : units[0] || '';
+              update(line.id, { item, qty: '', uom, batch: item?.batch_no || '', serials: item?.serial_no || '' }); setOpen(null); setUnitOpen(null);
             }} />
           </ScrollView>
         </View> : null}
         {line.item ? <>
-          <Text style={styles.label}>UOM</Text>
-          <Text style={styles.intro}>{line.uom} · Source quantity: {line.item.qty}</Text>
+          <Text style={styles.intro}>Source quantity: {collectionLimit(line.item, line.uom).toLocaleString(undefined, { maximumFractionDigits: 6 })} {line.uom}</Text>
         </> : null}
-        <Text style={styles.label}>Quantity collected{line.uom ? ` (${line.uom})` : ''}</Text>
-        <TextInput accessibilityLabel={`Item ${index + 1} quantity`} keyboardType="decimal-pad" style={styles.input} value={line.qty} onChangeText={(qty) => update(line.id, { qty })} />
+        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
+          <View style={{ flex: 1 }}><Text style={styles.label}>Quantity collected</Text>
+            <TextInput accessibilityLabel={`Item ${index + 1} quantity in ${line.uom}`} keyboardType="decimal-pad" style={styles.input} value={line.qty} onChangeText={(qty) => update(line.id, { qty })} />
+          </View>
+          {line.item ? <View style={{ minWidth: 112 }}><Text style={styles.label}>Unit</Text>
+            <Pressable accessibilityLabel={`Unit for item ${index + 1}: ${line.uom}`} accessibilityRole="button" accessibilityState={{ expanded: unitOpen === line.id, disabled: collectionUoms(line.item).length < 2 }} disabled={collectionUoms(line.item).length < 2} style={styles.input} onPress={() => { setUnitOpen(unitOpen === line.id ? null : line.id); setOpen(null); }}><Text style={styles.intro}>{line.uom}{collectionUoms(line.item).length > 1 ? ' ▾' : ''}</Text></Pressable>
+          </View> : null}
+        </View>
+        {line.item && unitOpen === line.id ? <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled" style={{ maxHeight: 180 }}>
+          <OptionList selected={line.uom} options={collectionUoms(line.item).map((uom) => ({ value: uom, label: uom, detail: uom !== line.item!.stock_uom ? `1 ${uom} = ${collectionUomFactor(line.item!, uom)} ${line.item!.stock_uom}` : 'Stock unit' }))} onSelect={(uom) => { update(line.id, { uom, qty: convertCollectionQuantity(line.item!, line.qty, line.uom, uom) }); setUnitOpen(null); }} />
+        </ScrollView> : null}
         {line.item?.has_batch_no ? <><Text style={styles.label}>Batch number</Text><Text style={styles.intro}>{line.batch}</Text></> : null}
         {line.item?.has_serial_no ? <><Text style={styles.label}>Serial numbers (one per line)</Text><TextInput multiline style={styles.textArea} value={line.serials} onChangeText={(serials) => update(line.id, { serials })} /></> : null}
         <FieldError message={errors[line.id]} />
