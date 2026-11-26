@@ -11,7 +11,7 @@ async function deviceArgs() {
   };
 }
 
-export type CollectionItemOption = { key: string; reference_row: string; row_idx: number; name: string; item_name: string; stock_uom: string; uom: string; qty: number; uoms: string[]; batch_no?: string; serial_no?: string; has_batch_no: number; has_serial_no: number };
+export type CollectionItemOption = { key: string; reference_row: string; row_idx: number; name: string; item_name: string; stock_uom: string; uom: string; qty: number; uoms: string[]; conversion_factor?: number; stock_qty?: number; uom_factors?: Record<string, number>; whole_number_uoms?: string[]; batch_no?: string; serial_no?: string; has_batch_no: number; has_serial_no: number };
 export type CollectionRecord = { name: string; collection_location: string; collection_review_status: string; return_request?: string };
 export async function getUnplannedCollections(tripName: string, stopName: string): Promise<CollectionRecord[]> {
   return callMobileMethod('vuna_transport.api.get_mobile_unplanned_collections', { ...(await deviceArgs()), trip_name: tripName, stop_name: stopName }, 'Could not load collections.');
